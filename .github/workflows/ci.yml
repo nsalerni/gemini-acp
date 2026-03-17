@@ -104,6 +104,7 @@ jobs:
       - name: Bump version
         id: version
         run: |
+          git pull --rebase origin main
           npm version patch --no-git-tag-version
           NEW_VERSION=$(node -p "require('./package.json').version")
           while git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; do
