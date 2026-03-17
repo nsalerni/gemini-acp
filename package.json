@@ -1,0 +1,68 @@
+{
+  "name": "gemini-acp",
+  "version": "0.1.0",
+  "description": "A Node.js library for communicating with the Gemini CLI over the ACP (Agent Control Protocol) via stdio.",
+  "license": "MIT",
+  "author": "Your Name",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./errors": {
+      "import": "./dist/errors.js",
+      "types": "./dist/errors.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types.js",
+      "types": "./dist/types.d.ts"
+    },
+    "./helpers": {
+      "import": "./dist/helpers/index.js",
+      "types": "./dist/helpers/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc && npm run copy-files",
+    "copy-files": "echo 'Build complete'",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --max-warnings 0",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "dev": "npm run typecheck && npm run test"
+  },
+  "keywords": [
+    "gemini",
+    "cli",
+    "acp",
+    "agent",
+    "control",
+    "protocol",
+    "ai",
+    "multi-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/gemini-acp"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^0.34.0"
+  },
+  "sideEffects": false
+}
