@@ -10,6 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: [18.x, 20.x, 22.x]
 
@@ -30,6 +31,9 @@ jobs:
 
       - name: Type check
         run: npm run typecheck
+
+      - name: Verify test fixture
+        run: chmod +x src/__tests__/fake-acp-server.mjs && node src/__tests__/fake-acp-server.mjs --help 2>&1 || true
 
       - name: Run tests
         run: npm run test:run
