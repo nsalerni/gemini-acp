@@ -12,7 +12,7 @@ async function main() {
 
   const session = await client.openSession({
     cwd: process.cwd(),
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     mode: "yolo",
   });
 

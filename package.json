@@ -37,7 +37,13 @@
     "lint": "eslint src --max-warnings 0",
     "test": "vitest",
     "test:run": "vitest run",
-    "dev": "npm run typecheck && npm run test"
+    "dev": "npm run typecheck && npm run test",
+    "example:01": "tsx examples/01-basic.ts",
+    "example:02": "tsx examples/02-with-image.ts",
+    "example:03": "tsx examples/03-permission-handling.ts",
+    "example:04": "tsx examples/04-session-resume.ts",
+    "example:05": "tsx examples/05-warm-start.ts",
+    "bench:warm-start": "tsx examples/bench-warm-start.ts"
   },
   "keywords": [
     "gemini",

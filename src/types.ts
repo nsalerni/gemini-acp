@@ -228,6 +228,19 @@ export interface GeminiClientOptions {
    * Callback for protocol-level errors
    */
   onProtocolError?: (error: Error) => void;
+
+  /**
+   * Enable warm session starting.
+   * When true, starts a background session on initialization for faster first prompts.
+   * Defaults to false
+   */
+  warmStart?: boolean;
+
+  /**
+   * Timeout for warm session startup in milliseconds. Defaults to 30000
+   * Only used if warmStart is true
+   */
+  warmStartTimeoutMs?: number;
 }
 
 export interface GeminiSessionOptions {

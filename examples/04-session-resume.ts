@@ -13,7 +13,8 @@ async function main() {
   console.log("📝 Creating new session...");
   const session1 = await client.openSession({
     cwd: process.cwd(),
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
+    mode: "yolo",
   });
 
   const sessionId = session1.id;
@@ -23,7 +24,7 @@ async function main() {
   await session1.prompt([
     {
       type: "text",
-      text: "What is the capital of France?",
+      text: "What is the capital of France? Answer in one sentence.",
     },
   ]);
 
@@ -42,7 +43,7 @@ async function main() {
   console.log("\n📝 Resuming session...");
   const session2 = await client.openSession({
     cwd: process.cwd(),
-    resumeSessionId: sessionId, // Resume by ID
+    resumeSessionId: sessionId,
   });
 
   console.log("Session resumed:", session2.id);
@@ -51,7 +52,7 @@ async function main() {
   await session2.prompt([
     {
       type: "text",
-      text: "What's the population?",
+      text: "What's the population? Answer in one sentence.",
     },
   ]);
 

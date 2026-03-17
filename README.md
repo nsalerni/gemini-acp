@@ -105,11 +105,22 @@ const client = await createGeminiClient({
     console.error("Protocol error:", error);
   },
 
+  // Enable warm start: begins a background session on initialization
+  // First prompts will be much faster since Gemini CLI is already running
+  warmStart: true,
+  warmStartTimeoutMs: 30_000,
+
   // Timeouts and resource limits
   requestTimeoutMs: 15_000,
   stderrBufferLimit: 16_000,
 });
 ```
+
+**Warm Start**: When `warmStart` is `true`, the client immediately starts a background session in the Gemini CLI subprocess. This means:
+- The Gemini process is already running when you open your first session
+- First prompts are significantly faster (no cold-start delay)
+- Subsequent sessions also benefit from the warm process
+- Ideal for long-lived applications or interactive systems
 
 ### 2. Opening Sessions
 
@@ -441,6 +452,45 @@ while (true) {
 rl.close();
 await session.close();
 await client.close();
+```
+
+### Long-Lived Application with Warm Start
+
+For applications that maintain a persistent connection to the agent (like GUI applications, servers, or chat interfaces), use warm start:
+
+```typescript
+import { createGeminiClient } from "gemini-acp";
+
+// Initialize with warm start - Gemini CLI starts in the background
+const client = await createGeminiClient({
+  binaryPath: "gemini",
+  cwd: process.cwd(),
+  warmStart: true,        // Starts background session on init
+  warmStartTimeoutMs: 30_000,
+});
+
+// Later, when user starts a thread/conversation:
+// First session opening is fast (uses warm session)
+const session = await client.openSession({
+  cwd: process.cwd(),
+  model: "gemini-2.0-flash",
+});
+
+// First prompt responds quickly - no cold start penalty
+await session.prompt([{ type: "text", text: "Hello!" }]);
+
+for await (const update of session.updates()) {
+  if (update.sessionUpdate === "agent_message_chunk") {
+    process.stdout.write(update.content?.text ?? "");
+  }
+}
+
+// When user closes the thread:
+await session.close();
+
+// The next thread opening is also fast (new warm session prepared)
+const session2 = await client.openSession({ cwd: process.cwd() });
+// ... etc
 ```
 
 ## Error Handling

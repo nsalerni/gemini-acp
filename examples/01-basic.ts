@@ -7,14 +7,13 @@ import { createGeminiClient } from "../src/index";
 async function main() {
   // Create a client
   const client = await createGeminiClient({
-    binaryPath: "gemini", // Uses PATH by default
     cwd: process.cwd(),
   });
 
   // Open a session
   const session = await client.openSession({
     cwd: process.cwd(),
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     mode: "yolo",
   });
 
@@ -24,7 +23,7 @@ async function main() {
   await session.prompt([
     {
       type: "text",
-      text: "What are the top 5 TypeScript best practices?",
+      text: "What are the top 5 TypeScript best practices? Keep your answer concise.",
     },
   ]);
 

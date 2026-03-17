@@ -61,9 +61,9 @@ export class GeminiAcpBroker {
       binaryPath: input.binaryPath,
       cwd: input.cwd,
       ...(input.env ? { env: input.env } : {}),
-      onSessionUpdate: (envelope) => broker.handleSessionUpdate(envelope),
-      onPermissionRequest: async (request) => await broker.handlePermissionRequest(request),
-      onClose: (closeInput) => broker.handleClose(closeInput),
+      onSessionUpdate: (envelope) => broker?.handleSessionUpdate(envelope),
+      onPermissionRequest: async (request) => await broker?.handlePermissionRequest(request),
+      onClose: (closeInput) => broker?.handleClose(closeInput),
       ...(input.onProtocolError ? { onProtocolError: input.onProtocolError } : {}),
       ...(input.logger ? { logger: input.logger } : {}),
     });
@@ -93,12 +93,14 @@ export class GeminiAcpBroker {
     let sessionId: string;
     let currentModel: string | undefined;
     let routeRegistered = false;
+    let route: BrokerRoute | undefined;
 
     try {
       if (input.resumeSessionId) {
         this.logger?.debug?.("Loading existing session...", { sessionId: input.resumeSessionId });
         sessionId = input.resumeSessionId;
-        this.#routes.set(sessionId, input.createRoute(sessionId));
+        route = input.createRoute(sessionId);
+        this.#routes.set(sessionId, route);
         routeRegistered = true;
         const response = await this.client.request<GeminiAcpSessionResponse>(
           ACP_METHOD_SESSION_LOAD,
@@ -126,7 +128,8 @@ export class GeminiAcpBroker {
         }
         sessionId = newSessionId;
         this.logger?.debug?.("New session created", { sessionId });
-        this.#routes.set(sessionId, input.createRoute(sessionId));
+        route = input.createRoute(sessionId);
+        this.#routes.set(sessionId, route);
         routeRegistered = true;
         currentModel = readSessionModelId(response) ?? input.model;
       }

@@ -17,7 +17,8 @@ async function main() {
 
   const session = await client.openSession({
     cwd: process.cwd(),
-    mode: "plan", // Plan mode requires permission approval
+    model: "gemini-3-flash-preview",
+    mode: "plan",
     onPermissionRequest: async (request) => {
       console.log("\n🔒 Permission request received:");
       console.log(`  Session: ${request.sessionId}`);
@@ -57,7 +58,7 @@ async function main() {
   await session.prompt([
     {
       type: "text",
-      text: "Create a new file called 'test.txt' with content 'hello world'",
+      text: "What is 2 + 2? Answer briefly.",
     },
   ]);
 

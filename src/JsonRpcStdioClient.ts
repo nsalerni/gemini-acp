@@ -265,7 +265,11 @@ export class JsonRpcStdioClient {
 
     let message: JsonRpcMessage;
     try {
-      message = JSON.parse(trimmed) as JsonRpcMessage;
+      const parsed = JSON.parse(trimmed);
+      if (typeof parsed !== "object" || parsed === null) {
+        return; // ignore non-object values (e.g. bare numbers from CLI debug output)
+      }
+      message = parsed as JsonRpcMessage;
     } catch (error) {
       const protocolError = new GeminiProtocolError(
         `Received invalid Gemini ACP JSON line: ${toMessage(error, "parse failure")}`,
