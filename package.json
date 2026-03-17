@@ -61,12 +61,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/nicobailon/gemini-acp"
+    "url": "https://github.com/nsalerni/gemini-acp"
   },
   "bugs": {
-    "url": "https://github.com/nicobailon/gemini-acp/issues"
+    "url": "https://github.com/nsalerni/gemini-acp/issues"
   },
-  "homepage": "https://github.com/nicobailon/gemini-acp#readme",
+  "homepage": "https://github.com/nsalerni/gemini-acp#readme",
   "engines": {
     "node": ">=18.0.0"
   },
