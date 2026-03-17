@@ -1,41 +1,44 @@
 # Publishing to npm
 
-This project is automatically published to npm on GitHub releases.
+This project is automatically published to npm on GitHub releases using OIDC (OpenID Connect) for secure, token-free authentication.
 
 ## Setup
 
-1. **Create an npm token:**
-   - Go to [npmjs.com](https://www.npmjs.com) and log in
-   - Navigate to Account Settings → Tokens
-   - Create a new **Granular Access Token** with:
-     - Permissions: `Publish` and `Read and write`
-     - Package access: Restrict to `@nsalerni/gemini-acp`
-     - Expiration: As desired (e.g., 30 days)
+**No manual token setup needed!** GitHub Actions automatically authenticates with npm via OIDC.
 
-2. **Add token to GitHub:**
-   - Go to your repository Settings → Secrets and variables → Actions
-   - Create a new secret: `NPM_TOKEN` with your npm token value
+The only requirement is that your npm account has **two-factor authentication enabled** and **token-based authentication disabled** (which you've already configured).
 
 ## Publishing
 
-To publish a new version to npm:
+Publishing is **fully automated**. Just push commits to `main`:
 
-1. **Update version** in `package.json`:
+1. **Push commits to main:**
    ```bash
-   npm version patch  # or minor, major
+   git push origin main
    ```
 
-2. **Create a GitHub release:**
-   - Go to Releases → Draft a new release
-   - Tag version: `v0.1.0` (must start with `v`)
-   - Release title: `v0.1.0`
-   - Add release notes
-   - Click "Publish release"
+2. **That's it!** The CI/CD pipeline will:
+   - Run tests, linting, and type checking
+   - Auto-bump the patch version
+   - Create a git tag and GitHub release
+   - Publish to npm automatically
 
-The GitHub Actions workflow will automatically:
-- Run linting, type checking, and tests
-- Build the package
-- Publish to npm under `@nsalerni/gemini-acp`
+### How it works
+
+- On every push to `main`, after tests pass, the `release` job automatically bumps the patch version using `npm version patch`
+- It creates a commit and git tag (e.g., `v0.1.5`)
+- The version update is pushed back to `main`
+- A GitHub Release is created from the tag
+- The `publish.yml` workflow detects the release and publishes to npm
+
+### Manual publishing (advanced)
+
+If you need to skip auto-publishing for a specific commit, add `[skip-release]` to your commit message:
+```bash
+git commit -m "docs: update README [skip-release]"
+```
+
+Note: This feature requires adding a conditional to the `release` job. Let us know if you need it.
 
 ## Verification
 
