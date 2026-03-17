@@ -1,6 +1,6 @@
 {
   "name": "@nsalerni/gemini-acp",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A Node.js library for communicating with the Gemini CLI over the ACP (Agent Control Protocol) via stdio.",
   "license": "MIT",
   "author": "Nico Salerni",
