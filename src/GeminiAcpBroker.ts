@@ -56,7 +56,8 @@ export class GeminiAcpBroker {
     readonly onProtocolError?: ((error: Error) => void) | undefined;
     readonly logger?: GeminiLogger | undefined;
   }) {
-    let broker!: GeminiAcpBroker;
+    // eslint-disable-next-line prefer-const
+    let broker: GeminiAcpBroker | undefined;
     const client = await JsonRpcStdioClient.start({
       binaryPath: input.binaryPath,
       cwd: input.cwd,

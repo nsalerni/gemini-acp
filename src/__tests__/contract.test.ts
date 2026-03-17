@@ -43,7 +43,7 @@ describe("ACP contract tests", () => {
     await promptDone;
 
     const chunks = updates.filter(
-      (u: any) => u.sessionUpdate === "agent_message_chunk",
+      (u: unknown) => (u as { sessionUpdate?: string }).sessionUpdate === "agent_message_chunk",
     );
     expect(chunks.length).toBeGreaterThanOrEqual(1);
 
@@ -111,8 +111,9 @@ describe("ACP contract tests", () => {
     });
 
     const promptDone = session.prompt([{ type: "text", text: "plan something" }]);
-    for await (const _update of session.updates()) {
+    for await (const update of session.updates()) {
       // drain
+      void update;
     }
     await promptDone;
 
