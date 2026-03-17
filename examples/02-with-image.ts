@@ -2,8 +2,8 @@
  * Example: Send a prompt with an image attachment
  */
 
-import { createGeminiClient } from "../src/index";
-import { imageFileToContentBlock } from "../src/helpers/imageFileToContentBlock";
+import { createGeminiClient } from "../src/index.js";
+import { imageFileToContentBlock } from "../src/helpers/imageFileToContentBlock.js";
 
 async function main() {
   const client = await createGeminiClient({

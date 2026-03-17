@@ -3,8 +3,8 @@
  */
 
 // Main exports
-export { createGeminiClient } from "./client";
-export type { GeminiClient, GeminiSession } from "./types";
+export { createGeminiClient } from "./client.js";
+export type { GeminiClient, GeminiSession } from "./types.js";
 
 // Types
 export type {
@@ -19,7 +19,7 @@ export type {
   GeminiAcpToolStatus,
   GeminiAcpToolContent,
   GeminiAcpPromptStopReason,
-} from "./types";
+} from "./types.js";
 
 // Errors
 export {
@@ -28,9 +28,8 @@ export {
   GeminiProtocolError,
   GeminiRequestError,
   GeminiTimeoutError,
-  GeminiSessionNotFoundError,
-  GeminiPermissionError,
-} from "./errors";
+  GeminiSessionClosedError,
+} from "./errors.js";
 
 // Constants (exported for advanced use cases)
 export {
@@ -45,4 +44,4 @@ export {
   ACP_METHOD_SESSION_UPDATE,
   ACP_METHOD_SESSION_REQUEST_PERMISSION,
   DEFAULT_REQUEST_TIMEOUT_MS,
-} from "./constants";
+} from "./constants.js";

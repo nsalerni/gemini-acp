@@ -2,7 +2,7 @@
  * Example: Handle permission requests in plan mode
  */
 
-import { createGeminiClient } from "../src/index";
+import { createGeminiClient } from "../src/index.js";
 
 async function main() {
   const client = await createGeminiClient({

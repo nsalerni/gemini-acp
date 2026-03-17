@@ -10,7 +10,7 @@
  *   npx tsx examples/bench-warm-start.ts --rounds 5
  */
 
-import { createGeminiClient, type GeminiClient, type GeminiSession } from "../src/index";
+import { createGeminiClient, type GeminiClient, type GeminiSession } from "../src/index.js";
 
 const PROMPT_TEXT = "Reply with the single word 'pong'.";
 const ROUNDS = Number(process.argv.find((_, i, a) => a[i - 1] === "--rounds") ?? 3);

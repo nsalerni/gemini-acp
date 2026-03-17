@@ -7,7 +7,7 @@ A Node.js library for communicating with the Gemini CLI over the **ACP (Agent Co
 - **Full ACP Protocol Support**: Implements the complete Agent Control Protocol for bidirectional communication
 - **Streaming Updates**: Receive real-time agent messages, reasoning, tool calls, and plan updates via async iterables
 - **Session Management**: Create, resume, and manage multiple Gemini sessions with proper lifecycle handling
-- **Model Selection**: Switch between different Gemini models at runtime
+- **Model Selection**: Set the Gemini model per-session via the ACP protocol
 - **Permission Handling**: Callback-based permission request handling for tool execution approvals
 - **Graceful Shutdown**: Proper resource cleanup and process termination
 - **Error Handling**: Comprehensive error types for debugging and recovery
@@ -25,7 +25,7 @@ yarn add gemini-acp
 
 - Node.js 18+
 - [Gemini CLI](https://ai.google.dev/gemini-cli) installed and authenticated
-- `gemini --acp` support (Gemini CLI v0.0.32+)
+- `gemini --acp` support (Gemini CLI v0.30+)
 
 ## Quick Start
 
@@ -41,8 +41,8 @@ const client = await createGeminiClient({
 // Open a session
 const session = await client.openSession({
   cwd: process.cwd(),
-  model: "gemini-2.0-flash",
-  mode: "yolo", // or "plan" for approval-required mode
+  model: "gemini-3-flash-preview",
+  mode: "yolo",
 });
 
 // Send a prompt and stream updates
@@ -110,9 +110,6 @@ const client = await createGeminiClient({
   warmStart: true,
   warmStartTimeoutMs: 30_000,
 
-  // Timeouts and resource limits
-  requestTimeoutMs: 15_000,
-  stderrBufferLimit: 16_000,
 });
 ```
 
@@ -130,7 +127,7 @@ Sessions are independent conversations with the Gemini agent. You can have multi
 // Create a new session
 const session = await client.openSession({
   cwd: "/path/to/project",
-  model: "gemini-2.0-flash", // optional
+  model: "gemini-3-flash-preview", // optional
   mode: "yolo", // or "plan"
 });
 
@@ -296,7 +293,7 @@ await session.setMode("plan");
 await session.setMode("yolo");
 
 // Switch to a different model
-await session.setModel("gemini-2.0-flash");
+await session.setModel("gemini-3-flash-preview");
 
 // Cancel a running prompt
 await session.cancel();
@@ -333,12 +330,12 @@ const client = await createGeminiClient();
 
 const session1 = await client.openSession({
   cwd: "/project/frontend",
-  model: "gemini-2.0-flash",
+  model: "gemini-3-flash-preview",
 });
 
 const session2 = await client.openSession({
   cwd: "/project/backend",
-  model: "gemini-2.0-flash",
+  model: "gemini-3-flash-preview",
 });
 
 // Both sessions run independently
@@ -473,7 +470,7 @@ const client = await createGeminiClient({
 // First session opening is fast (uses warm session)
 const session = await client.openSession({
   cwd: process.cwd(),
-  model: "gemini-2.0-flash",
+  model: "gemini-3-flash-preview",
 });
 
 // First prompt responds quickly - no cold start penalty
@@ -537,8 +534,6 @@ interface GeminiClientOptions {
   binaryPath?: string;
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  requestTimeoutMs?: number;
-  stderrBufferLimit?: number;
   logger?: GeminiLogger;
   onProtocolError?: (error: Error) => void;
 }
@@ -651,18 +646,6 @@ A promise that resolves when the process has exited.
 
 **Type:** `Promise<void>`
 
-## How It Works: ncode Integration Background
-
-The `gemini-acp` library extracts the core ACP communication layer from [ncode](https://github.com/yourorg/ncode), a GUI-based multi-agent orchestration platform. In ncode, Gemini is one of several available agents, and this library provides the protocol implementation that enables:
-
-1. **Multi-Agent Orchestration**: Multiple Gemini sessions can run in parallel, each with independent state and permissions
-2. **Event Streaming**: Real-time access to agent reasoning, tool calls, and outputs
-3. **Session Persistence**: Save and resume agent sessions across application restarts
-4. **Permission Control**: Explicit approval workflows for tool execution
-5. **Plan Mode**: Separate planning and execution phases for approval-required scenarios
-
-This library is the **protocol-only** layer, making it reusable without ncode's UI, event system, or runtime abstractions.
-
 ## Architecture
 
 ```
@@ -698,13 +681,13 @@ This library is the **protocol-only** layer, making it reusable without ncode's 
 
 | Library Version | ACP Version | Tested Gemini CLI |
 | --------------- | ----------- | ------------------- |
-| 0.1.x           | 1           | 0.0.32+             |
+| 0.1.x           | 1           | 0.30+               |
 
 ## Limitations & Known Issues
 
 1. **No automatic process restart**: If the Gemini CLI process crashes, the library will raise an error. Applications must handle reconnection.
 2. **No session persistence to disk**: The library provides `resumeSessionId` for in-memory resumption, but you must manually persist and restore session IDs.
-3. **Plan mode approval**: In ncode, there's a UI for approval workflows. With this library, you must handle all approvals via the `onPermissionRequest` callback.
+3. **Plan mode approval**: You must handle all approvals via the `onPermissionRequest` callback.
 4. **No Web support**: This is a Node.js library only; Gemini CLI must be locally installed.
 
 ## Contributing
@@ -721,28 +704,14 @@ npm run test:run  # Run tests once
 npm run typecheck # Type-check without running
 ```
 
-### Test Structure
-
-- **Unit tests**: Fast, deterministic protocol and lifecycle tests
-- **Contract tests**: Tests against a fake ACP server (no real Gemini CLI required)
-- **Integration tests** (optional): Real Gemini CLI tests (run with `GEMINI_ACP_INTEGRATION_TESTS=1`)
-
 ## License
 
 MIT
 
-## Acknowledgments
-
-This library is extracted from [ncode](https://github.com/yourorg/ncode), a multi-agent GUI platform. Thanks to the ncode team for the original implementation and battle-tested ACP integration.
-
 ## Related Resources
 
 - [Gemini CLI Documentation](https://ai.google.dev/gemini-cli)
-- [ACP Protocol Specification](https://modelcontextprotocol.io/)
-- [ncode Repository](https://github.com/yourorg/ncode)
 
 ## Support
 
-For issues, questions, or contributions:
-- GitHub Issues: [Create an issue](https://github.com/yourorg/gemini-acp/issues)
-- Documentation: [Full docs](https://github.com/yourorg/gemini-acp#readme)
+For issues, questions, or contributions, please open an issue on the GitHub repository.

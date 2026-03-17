@@ -5,7 +5,7 @@ import {
   MAX_STDERR_CHARS,
   ACP_METHOD_INITIALIZE,
   ACP_PROTOCOL_VERSION,
-} from "./constants";
+} from "./constants.js";
 import {
   type JsonRpcMessage,
   type JsonRpcRequestMessage,
@@ -15,9 +15,9 @@ import {
   type GeminiAcpNotificationEnvelope,
   type GeminiAcpPermissionRequest,
   type GeminiLogger,
-} from "./types";
-import { GeminiProcessError, GeminiProtocolError, GeminiTimeoutError } from "./errors";
-import { toMessage } from "./utils";
+} from "./types.js";
+import { GeminiProcessError, GeminiProtocolError, GeminiRequestError, GeminiTimeoutError } from "./errors.js";
+import { toMessage } from "./utils.js";
 
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
@@ -134,7 +134,7 @@ export class JsonRpcStdioClient {
       await client.stop();
       throw new GeminiProcessError(
         toMessage(error, "Failed to initialize Gemini CLI"),
-        error
+        { cause: error }
       );
     }
   }
@@ -224,7 +224,17 @@ export class JsonRpcStdioClient {
     }
     this.logger?.info?.("Stopping Gemini ACP client...");
     this.child.kill("SIGTERM");
+
+    // SIGKILL fallback if SIGTERM doesn't work within 5s
+    const killTimeout = setTimeout(() => {
+      if (!this.#closed) {
+        this.logger?.warn?.("SIGTERM did not stop process, sending SIGKILL");
+        this.child.kill("SIGKILL");
+      }
+    }, 5_000);
+
     await this.#closedPromise;
+    clearTimeout(killTimeout);
     this.logger?.info?.("Gemini ACP client stopped");
   }
 
@@ -273,7 +283,7 @@ export class JsonRpcStdioClient {
     } catch (error) {
       const protocolError = new GeminiProtocolError(
         `Received invalid Gemini ACP JSON line: ${toMessage(error, "parse failure")}`,
-        error
+        { cause: error }
       );
       this.logger?.error?.(
         "Protocol error",
@@ -295,7 +305,11 @@ export class JsonRpcStdioClient {
       }
       if ("error" in message) {
         this.logger?.debug?.(`Request ${message.id} failed: ${message.error.message}`);
-        pending.reject(new GeminiProtocolError(message.error.message));
+        pending.reject(new GeminiRequestError(
+          message.error.message,
+          message.error.code,
+          message.error.data ? { metadata: { data: message.error.data } } : undefined,
+        ));
       } else {
         this.logger?.debug?.(`Request ${message.id} succeeded`);
         pending.resolve(message.result);

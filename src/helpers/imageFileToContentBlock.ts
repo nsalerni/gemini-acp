@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { type GeminiContentBlock } from "../types";
+import { type GeminiContentBlock } from "../types.js";
 
 /**
  * Convert an image file to a Gemini content block

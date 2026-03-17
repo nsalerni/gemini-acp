@@ -1,5 +1,5 @@
 import { mkdirSync, copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 
 const GEMINI_GLOBAL_DIRNAME = ".gemini";
@@ -36,7 +36,7 @@ export async function createIsolatedGeminiHome(input: {
 
     if (existsSync(sourcePath)) {
       try {
-        mkdirSync(require("path").dirname(destPath), { recursive: true });
+        mkdirSync(dirname(destPath), { recursive: true });
         copyFileSync(sourcePath, destPath);
       } catch {
         // Best effort; ignore if mirroring fails

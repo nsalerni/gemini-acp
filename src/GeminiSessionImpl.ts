@@ -1,21 +1,21 @@
 import {
   type GeminiSession,
-  type GeminiSessionOptions,
   type GeminiSessionUpdate,
   type GeminiContentBlock,
   type GeminiLogger,
-} from "./types";
-import { GeminiAcpBroker } from "./GeminiAcpBroker";
-import { GeminiSessionNotFoundError } from "./errors";
+} from "./types.js";
+import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
+import { GeminiSessionClosedError } from "./errors.js";
 
 export class GeminiSessionImpl implements GeminiSession {
   readonly id: string;
-  readonly currentModel?: string;
 
+  #currentModel: string | undefined;
   #broker: GeminiAcpBroker;
   #updates: GeminiSessionUpdate[] = [];
   #updateResolvers: Array<(update: GeminiSessionUpdate | null) => void> = [];
   #closed = false;
+  #prompting = false;
   #turnComplete = false;
   #error?: Error;
 
@@ -27,23 +27,28 @@ export class GeminiSessionImpl implements GeminiSession {
   ) {
     this.id = sessionId;
     this.#broker = broker;
-    this.currentModel = currentModel;
+    this.#currentModel = currentModel;
   }
 
   static create(
     sessionId: string,
     broker: GeminiAcpBroker,
     currentModel: string | undefined,
-    _options: GeminiSessionOptions,
     logger?: GeminiLogger
   ): GeminiSessionImpl {
-    const session = new GeminiSessionImpl(sessionId, broker, currentModel, logger);
-    return session;
+    return new GeminiSessionImpl(sessionId, broker, currentModel, logger);
+  }
+
+  get currentModel(): string | undefined {
+    return this.#currentModel;
   }
 
   async prompt(blocks: readonly GeminiContentBlock[]): Promise<void> {
     if (this.#closed) {
-      throw new GeminiSessionNotFoundError("Session is closed");
+      throw new GeminiSessionClosedError("Session is closed");
+    }
+    if (this.#prompting) {
+      throw new GeminiSessionClosedError("A prompt is already in progress on this session");
     }
 
     this.logger?.debug?.("Sending prompt...", { sessionId: this.id, blockCount: blocks.length });
@@ -51,6 +56,7 @@ export class GeminiSessionImpl implements GeminiSession {
     // Clear previous updates and reset turn state
     this.#updates = [];
     this.#turnComplete = false;
+    this.#prompting = true;
 
     try {
       await this.#broker.prompt(this.id, blocks);
@@ -62,6 +68,7 @@ export class GeminiSessionImpl implements GeminiSession {
       );
       throw error;
     } finally {
+      this.#prompting = false;
       this.#turnComplete = true;
       this.notifyAllResolvers();
     }
@@ -69,7 +76,7 @@ export class GeminiSessionImpl implements GeminiSession {
 
   async setMode(mode: "yolo" | "plan"): Promise<void> {
     if (this.#closed) {
-      throw new GeminiSessionNotFoundError("Session is closed");
+      throw new GeminiSessionClosedError("Session is closed");
     }
     this.logger?.debug?.("Setting mode...", { sessionId: this.id, mode });
     await this.#broker.setMode(this.id, mode);
@@ -77,11 +84,11 @@ export class GeminiSessionImpl implements GeminiSession {
 
   async setModel(modelId: string): Promise<void> {
     if (this.#closed) {
-      throw new GeminiSessionNotFoundError("Session is closed");
+      throw new GeminiSessionClosedError("Session is closed");
     }
     this.logger?.debug?.("Setting model...", { sessionId: this.id, modelId });
     await this.#broker.setModel(this.id, modelId);
-    (this as any).currentModel = modelId;
+    this.#currentModel = modelId;
   }
 
   cancel(): Promise<void> {
@@ -134,7 +141,15 @@ export class GeminiSessionImpl implements GeminiSession {
     this.notifyAllResolvers();
   }
 
-  private _handleUpdate(update: GeminiSessionUpdate) {
+  private notifyAllResolvers() {
+    for (const resolver of this.#updateResolvers) {
+      resolver(null);
+    }
+    this.#updateResolvers = [];
+  }
+
+  // Public methods for route handlers
+  handleUpdate(update: GeminiSessionUpdate): void {
     if (this.#closed) {
       return;
     }
@@ -147,21 +162,9 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
-  private notifyAllResolvers() {
-    for (const resolver of this.#updateResolvers) {
-      // Signal end by having updates() exit
-      resolver(null as any);
-    }
-    this.#updateResolvers = [];
-  }
-
-  // Public methods for route handlers
-  handleUpdate(update: GeminiSessionUpdate): void {
-    return this._handleUpdate(update);
-  }
-
   handleBrokerClose(closeInput: { error?: Error; stderr: string }): void {
     this.#error = closeInput.error ?? new Error(closeInput.stderr.trim() || "Broker closed");
+    this.#closed = true;
     this.notifyAllResolvers();
   }
 }

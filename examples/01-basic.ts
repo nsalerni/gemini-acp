@@ -2,7 +2,7 @@
  * Basic example: Send a simple prompt and stream responses
  */
 
-import { createGeminiClient } from "../src/index";
+import { createGeminiClient } from "../src/index.js";
 
 async function main() {
   // Create a client

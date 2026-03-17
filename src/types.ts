@@ -210,16 +210,6 @@ export interface GeminiClientOptions {
   env?: NodeJS.ProcessEnv;
 
   /**
-   * Request timeout in milliseconds. Defaults to 15000
-   */
-  requestTimeoutMs?: number;
-
-  /**
-   * Maximum stderr buffer size in characters. Defaults to 16000
-   */
-  stderrBufferLimit?: number;
-
-  /**
    * Optional logger instance
    */
   logger?: GeminiLogger;
@@ -245,9 +235,9 @@ export interface GeminiClientOptions {
 
 export interface GeminiSessionOptions {
   /**
-   * Working directory for the session
+   * Working directory for the session. Defaults to the client's cwd.
    */
-  cwd: string;
+  cwd?: string;
 
   /**
    * Session ID to resume. If not provided, creates a new session

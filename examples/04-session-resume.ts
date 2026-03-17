@@ -2,7 +2,7 @@
  * Example: Resume a previous session
  */
 
-import { createGeminiClient } from "../src/index";
+import { createGeminiClient } from "../src/index.js";
 
 async function main() {
   const client = await createGeminiClient({

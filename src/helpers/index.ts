@@ -2,5 +2,5 @@
  * Helper utilities for Gemini ACP
  */
 
-export { imageFileToContentBlock } from "./imageFileToContentBlock";
-export { createIsolatedGeminiHome } from "./createIsolatedGeminiHome";
+export { imageFileToContentBlock } from "./imageFileToContentBlock.js";
+export { createIsolatedGeminiHome } from "./createIsolatedGeminiHome.js";

@@ -6,7 +6,7 @@ import {
   ACP_METHOD_SESSION_SET_MODEL,
   ACP_METHOD_SESSION_PROMPT,
   ACP_METHOD_SESSION_CANCEL,
-} from "./constants";
+} from "./constants.js";
 import {
   type GeminiAcpSessionResponse,
   type GeminiAcpNotificationEnvelope,
@@ -15,10 +15,10 @@ import {
   type GeminiContentBlock,
   type GeminiAcpPromptResponse,
   type GeminiLogger,
-} from "./types";
-import { JsonRpcStdioClient } from "./JsonRpcStdioClient";
-import { GeminiProtocolError } from "./errors";
-import { readSessionId, readSessionModelId, trimToUndefined } from "./utils";
+} from "./types.js";
+import { JsonRpcStdioClient } from "./JsonRpcStdioClient.js";
+import { GeminiProtocolError } from "./errors.js";
+import { readSessionId, readSessionModelId, trimToUndefined } from "./utils.js";
 
 interface BrokerRoute {
   readonly onSessionUpdate: (update: GeminiSessionUpdate) => void;

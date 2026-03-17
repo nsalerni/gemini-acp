@@ -6,7 +6,7 @@
  * "warm" and responds much faster than a cold start.
  */
 
-import { createGeminiClient } from "../src/index";
+import { createGeminiClient } from "../src/index.js";
 
 async function main() {
   console.log("📍 Creating client with warm start enabled...");

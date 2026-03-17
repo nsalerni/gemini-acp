@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "A Node.js library for communicating with the Gemini CLI over the ACP (Agent Control Protocol) via stdio.",
   "license": "MIT",
-  "author": "Your Name",
+  "author": "",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -43,7 +43,8 @@
     "example:03": "tsx examples/03-permission-handling.ts",
     "example:04": "tsx examples/04-session-resume.ts",
     "example:05": "tsx examples/05-warm-start.ts",
-    "bench:warm-start": "tsx examples/bench-warm-start.ts"
+    "bench:warm-start": "tsx examples/bench-warm-start.ts",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "keywords": [
     "gemini",
@@ -57,8 +58,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/gemini-acp"
+    "url": "https://github.com/nicobailon/gemini-acp"
   },
+  "bugs": {
+    "url": "https://github.com/nicobailon/gemini-acp/issues"
+  },
+  "homepage": "https://github.com/nicobailon/gemini-acp#readme",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -68,6 +73,7 @@
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
     "typescript": "^5.0.0",
+    "tsx": "^4.0.0",
     "vitest": "^0.34.0"
   },
   "sideEffects": false

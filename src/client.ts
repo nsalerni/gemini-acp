@@ -4,11 +4,11 @@ import {
   type GeminiSession,
   type GeminiSessionOptions,
   type GeminiLogger,
-} from "./types";
-import { GeminiAcpBroker } from "./GeminiAcpBroker";
-import { GeminiSessionImpl } from "./GeminiSessionImpl";
-import { GeminiProcessError } from "./errors";
-import { trimToUndefined } from "./utils";
+} from "./types.js";
+import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
+import { GeminiSessionImpl } from "./GeminiSessionImpl.js";
+import { GeminiProcessError } from "./errors.js";
+import { trimToUndefined } from "./utils.js";
 
 interface GeminiWarmSession {
   readonly broker: GeminiAcpBroker;
@@ -19,6 +19,7 @@ interface GeminiWarmSession {
 
 export class GeminiClientImpl implements GeminiClient {
   #broker: GeminiAcpBroker | undefined;
+  #brokerPending: Promise<GeminiAcpBroker> | undefined;
   #sessions = new Map<string, GeminiSessionImpl>();
   #warmSession: GeminiWarmSession | undefined;
   #warmSessionPending: Promise<void> | undefined;
@@ -69,68 +70,17 @@ export class GeminiClientImpl implements GeminiClient {
 
     try {
       // Check if we can use the warm session
-      let sessionId: string;
-      let currentModel: string | undefined;
-      let useWarmSession = false;
-
       if (
         this.#warmSession &&
         this.#warmSession.cwd === cwd &&
         this.#warmSession.binaryPath === this.binaryPath &&
         !options.resumeSessionId
       ) {
-        this.logger?.debug?.("Taking warm session", { sessionId: this.#warmSession.sessionId });
-        sessionId = this.#warmSession.sessionId;
-        currentModel = options.model;
-        useWarmSession = true;
-        // Don't remove it from map yet, the session is already there
-        this.#warmSession = undefined;
-        
-        // Start another warm session in the background
-        void this.startWarmSession().catch((error) => {
-          this.logger?.warn?.("Failed to restart warm session", error instanceof Error ? error.message : String(error));
-        });
-      } else {
-        // Regular session opening
-        let createdSession: GeminiSessionImpl | undefined;
-        const result = await broker.openSession({
-          cwd,
-          mode,
-          resumeSessionId: options.resumeSessionId,
-          model: options.model,
-          createRoute: (createdSessionId: string) => {
-            createdSession = GeminiSessionImpl.create(createdSessionId, broker, undefined, options, this.logger);
-            this.#sessions.set(createdSessionId, createdSession);
-            return {
-              onSessionUpdate: (update) => createdSession!.handleUpdate(update),
-              onPermissionRequest: async (request) => {
-                if (options.onPermissionRequest) {
-                  return await options.onPermissionRequest(request);
-                }
-                return {
-                  outcome: {
-                    outcome: "cancelled",
-                  },
-                };
-              },
-              onBrokerClose: (closeInput) => {
-                createdSession!.handleBrokerClose(closeInput);
-              },
-            };
-          },
-        });
-        sessionId = result.sessionId;
-        currentModel = result.currentModel;
+        return await this.takeWarmSession(this.#warmSession, broker, options, mode);
       }
 
-      // For warm sessions, retrieve the already-created session
-      const session = useWarmSession 
-        ? (this.#sessions.get(sessionId) || GeminiSessionImpl.create(sessionId, broker, currentModel, options, this.logger))
-        : this.#sessions.get(sessionId)!;
-
-      this.logger?.info?.("Session opened", { sessionId, model: currentModel, fromWarm: useWarmSession });
-
-      return session;
+      // Regular session opening
+      return await this.openNewSession(broker, options, cwd, mode);
     } catch (error) {
       this.logger?.error?.(
         "Failed to open session",
@@ -138,6 +88,92 @@ export class GeminiClientImpl implements GeminiClient {
       );
       throw error;
     }
+  }
+
+  private async openNewSession(
+    broker: GeminiAcpBroker,
+    options: GeminiSessionOptions,
+    cwd: string,
+    mode: "yolo" | "plan",
+  ): Promise<GeminiSession> {
+    let createdSession: GeminiSessionImpl | undefined;
+    const result = await broker.openSession({
+      cwd,
+      mode,
+      resumeSessionId: options.resumeSessionId,
+      model: options.model,
+      createRoute: (createdSessionId: string) => {
+        createdSession = GeminiSessionImpl.create(createdSessionId, broker, undefined, this.logger);
+        this.#sessions.set(createdSessionId, createdSession);
+        return {
+          onSessionUpdate: (update) => createdSession!.handleUpdate(update),
+          onPermissionRequest: async (request) => {
+            if (options.onPermissionRequest) {
+              return await options.onPermissionRequest(request);
+            }
+            return { outcome: { outcome: "cancelled" } };
+          },
+          onBrokerClose: (closeInput) => {
+            createdSession!.handleBrokerClose(closeInput);
+          },
+        };
+      },
+    });
+
+    const session = this.#sessions.get(result.sessionId)!;
+    this.logger?.info?.("Session opened", { sessionId: result.sessionId, model: result.currentModel });
+    return session;
+  }
+
+  private async takeWarmSession(
+    warm: GeminiWarmSession,
+    broker: GeminiAcpBroker,
+    options: GeminiSessionOptions,
+    mode: "yolo" | "plan",
+  ): Promise<GeminiSession> {
+    const sessionId = warm.sessionId;
+    this.logger?.debug?.("Taking warm session", { sessionId });
+    this.#warmSession = undefined;
+
+    // Create a real session and rebind the broker route to it
+    const session = GeminiSessionImpl.create(sessionId, broker, undefined, this.logger);
+    this.#sessions.set(sessionId, session);
+
+    broker.bindSession(sessionId, {
+      onSessionUpdate: (update) => session.handleUpdate(update),
+      onPermissionRequest: async (request) => {
+        if (options.onPermissionRequest) {
+          return await options.onPermissionRequest(request);
+        }
+        return { outcome: { outcome: "cancelled" } };
+      },
+      onBrokerClose: (closeInput) => {
+        session.handleBrokerClose(closeInput);
+      },
+    });
+
+    // Apply requested mode and model via ACP RPCs
+    try {
+      await broker.setMode(sessionId, mode);
+    } catch (error) {
+      this.logger?.warn?.("Failed to set mode on warm session", error instanceof Error ? error.message : String(error));
+    }
+
+    if (options.model) {
+      try {
+        await broker.setModel(sessionId, options.model);
+      } catch (error) {
+        this.logger?.warn?.("Failed to set model on warm session", error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    // Start another warm session in the background
+    void this.startWarmSession().catch((error) => {
+      this.logger?.warn?.("Failed to restart warm session", error instanceof Error ? error.message : String(error));
+    });
+
+    this.logger?.info?.("Session opened", { sessionId, model: options.model, fromWarm: true });
+    return session;
   }
 
   async close(): Promise<void> {
@@ -196,27 +232,38 @@ export class GeminiClientImpl implements GeminiClient {
       return this.#broker;
     }
 
+    // Serialize concurrent broker starts
+    if (this.#brokerPending) {
+      return this.#brokerPending;
+    }
+
     this.logger?.debug?.("Starting broker...", { binaryPath: this.binaryPath, cwd: this.cwd });
 
-    try {
-      this.#broker = await GeminiAcpBroker.start({
-        binaryPath: this.binaryPath,
-        cwd: this.cwd,
-        ...(this.env ? { env: this.env } : {}),
-        ...(this.onProtocolError ? { onProtocolError: this.onProtocolError } : {}),
-        ...(this.logger ? { logger: this.logger } : {}),
-      });
+    const pending = (async () => {
+      try {
+        this.#broker = await GeminiAcpBroker.start({
+          binaryPath: this.binaryPath,
+          cwd: this.cwd,
+          ...(this.env ? { env: this.env } : {}),
+          ...(this.onProtocolError ? { onProtocolError: this.onProtocolError } : {}),
+          ...(this.logger ? { logger: this.logger } : {}),
+        });
 
-      this.logger?.info?.("Broker started successfully");
+        this.logger?.info?.("Broker started successfully");
+        return this.#broker;
+      } catch (error) {
+        this.logger?.error?.(
+          "Failed to start broker",
+          error instanceof Error ? error.message : String(error)
+        );
+        throw error;
+      } finally {
+        this.#brokerPending = undefined;
+      }
+    })();
 
-      return this.#broker;
-    } catch (error) {
-      this.logger?.error?.(
-        "Failed to start broker",
-        error instanceof Error ? error.message : String(error)
-      );
-      throw error;
-    }
+    this.#brokerPending = pending;
+    return pending;
   }
 
   private async startWarmSession(): Promise<void> {
@@ -227,8 +274,10 @@ export class GeminiClientImpl implements GeminiClient {
     }
 
     if (this.#warmSession) {
-      return; // Already have a warm session
+      return;
     }
+
+    let warmSessionId: string | undefined;
 
     const warmPromise = (async () => {
       try {
@@ -236,24 +285,30 @@ export class GeminiClientImpl implements GeminiClient {
         
         this.logger?.debug?.("Starting warm session...");
 
+        const timeoutHandle = setTimeout(() => {
+          // noop — just for the race
+        }, this.warmStartTimeoutMs);
+
         const { sessionId } = await Promise.race([
           broker.openSession({
             cwd: this.cwd,
             mode: "yolo",
-            createRoute: () => ({
-              onSessionUpdate: () => {
-                // Ignore updates for warm sessions
-              },
-              onPermissionRequest: async () => ({
-                outcome: { outcome: "cancelled" },
-              }),
-              onBrokerClose: () => {
-                // Clean up warm session on broker close
-                if (this.#warmSession?.sessionId === sessionId) {
-                  this.#warmSession = undefined;
-                }
-              },
-            }),
+            createRoute: (createdId: string) => {
+              warmSessionId = createdId;
+              return {
+                onSessionUpdate: () => {
+                  // Ignore updates for warm sessions — they get rebound when taken
+                },
+                onPermissionRequest: async () => ({
+                  outcome: { outcome: "cancelled" as const },
+                }),
+                onBrokerClose: () => {
+                  if (this.#warmSession?.sessionId === warmSessionId) {
+                    this.#warmSession = undefined;
+                  }
+                },
+              };
+            },
           }),
           new Promise<never>((_, reject) =>
             setTimeout(
@@ -262,6 +317,8 @@ export class GeminiClientImpl implements GeminiClient {
             )
           ),
         ]);
+
+        clearTimeout(timeoutHandle);
 
         this.#warmSession = {
           broker,
@@ -272,6 +329,14 @@ export class GeminiClientImpl implements GeminiClient {
 
         this.logger?.info?.("Warm session ready", { sessionId });
       } catch (error) {
+        // Clean up leaked warm session on timeout
+        if (warmSessionId) {
+          try {
+            this.#broker?.releaseSession(warmSessionId);
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
         this.logger?.warn?.(
           "Failed to start warm session",
           error instanceof Error ? error.message : String(error)
