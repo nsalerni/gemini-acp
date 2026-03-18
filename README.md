@@ -2,7 +2,11 @@
 
 [![CI](https://github.com/nsalerni/gemini-acp/actions/workflows/ci.yml/badge.svg)](https://github.com/nsalerni/gemini-acp/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@nsalerni/gemini-acp)](https://www.npmjs.com/package/@nsalerni/gemini-acp)
-[![Socket Badge](https://badge.socket.dev/npm/package/@nsalerni/gemini-acp/0.1.1)](https://badge.socket.dev/npm/package/@nsalerni/gemini-acp/0.1.1)
+[![npm downloads](https://img.shields.io/npm/dm/@nsalerni/gemini-acp)](https://www.npmjs.com/package/@nsalerni/gemini-acp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
+[![Socket Badge](https://badge.socket.dev/npm/package/@nsalerni/gemini-acp)](https://socket.dev/npm/package/@nsalerni/gemini-acp)
 
 A Node.js library for communicating with the Gemini CLI over the **ACP (Agent Control Protocol)**. Stream agentic responses, handle permissions, and manage sessions with full TypeScript support.
 
