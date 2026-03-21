@@ -128,15 +128,13 @@ async function main() {
   const warmAvgOpen = avg(warmResults, (r) => r.openMs);
   const openSpeedup = coldAvgOpen / Math.max(warmAvgOpen, 0.01);
 
-  const coldAvgTotal = avg(coldResults, (r) => r.totalMs);
-  const warmAvgTotal = avg(warmResults, (r) => r.totalMs);
+  const coldAvgPrompt = avg(coldResults, (r) => r.promptMs);
+  const warmAvgPrompt = avg(warmResults, (r) => r.promptMs);
 
-  console.log(
-    `\n  ⚡ Session-open speedup: ${openSpeedup.toFixed(1)}×  (${fmt(coldAvgOpen)}ms → ${fmt(warmAvgOpen)}ms)`,
-  );
-  console.log(
-    `  ⏱️  Avg total round-trip:  cold=${fmt(coldAvgTotal)}ms  warm=${fmt(warmAvgTotal)}ms\n`,
-  );
+  console.log("\n  📋 Summary");
+  console.log(`  ⚡ Session-open:  ${fmt(coldAvgOpen)}ms → ${fmt(warmAvgOpen)}ms  (${openSpeedup.toFixed(1)}× faster)`);
+  console.log(`  🤖 Prompt (LLM):  ${fmt(coldAvgPrompt)}ms vs ${fmt(warmAvgPrompt)}ms  (server-side, not affected by warm start)`);
+  console.log(`\n  Warm start eliminates session-open latency. Prompt time depends on the model and varies per request.\n`);
 }
 
 main().catch((err) => {
