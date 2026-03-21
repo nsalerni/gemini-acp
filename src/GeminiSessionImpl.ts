@@ -4,6 +4,7 @@ import {
   type GeminiContentBlock,
   type GeminiPromptInput,
   type GeminiAcpPromptResponse,
+  type GeminiClientEvent,
   type GeminiLogger,
 } from "./types.js";
 import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
@@ -28,6 +29,7 @@ export class GeminiSessionImpl implements GeminiSession {
   #turnComplete = true;
   #promptTimeoutMs: number | undefined;
   #error?: Error;
+  #onEvent?: (event: GeminiClientEvent) => void;
   #onDispose?: (sessionId: string) => void;
 
   private constructor(
@@ -48,11 +50,13 @@ export class GeminiSessionImpl implements GeminiSession {
     logger?: GeminiLogger,
     options?: {
       promptTimeoutMs?: number;
+      onEvent?: (event: GeminiClientEvent) => void;
       onDispose?: (sessionId: string) => void;
     },
   ): GeminiSessionImpl {
     const session = new GeminiSessionImpl(sessionId, broker, currentModel, logger);
     session.#promptTimeoutMs = options?.promptTimeoutMs;
+    session.#onEvent = options?.onEvent;
     session.#onDispose = options?.onDispose;
     return session;
   }
@@ -109,16 +113,18 @@ export class GeminiSessionImpl implements GeminiSession {
     this.#turnComplete = false;
     this.#prompting = true;
 
+    this.#emitEvent({ type: "prompt_started", sessionId: this.id });
+
     return (async () => {
       try {
         const response = await this.#broker.prompt(this.id, blocks, this.#promptTimeoutMs);
+        this.#emitEvent({ type: "prompt_completed", sessionId: this.id, stopReason: response.stopReason });
         this.logger?.debug?.("Prompt completed", { sessionId: this.id });
         return response;
       } catch (error) {
-        this.logger?.error?.(
-          "Prompt failed",
-          error instanceof Error ? error.message : String(error),
-        );
+        const errMsg = error instanceof Error ? error.message : String(error);
+        this.#emitEvent({ type: "prompt_failed", sessionId: this.id, error: errMsg });
+        this.logger?.error?.("Prompt failed", errMsg);
         throw error;
       } finally {
         this.#prompting = false;
@@ -216,6 +222,14 @@ export class GeminiSessionImpl implements GeminiSession {
     }
     this.#updateResolvers.length = 0;
     this.#resolversHead = 0;
+  }
+
+  #emitEvent(event: GeminiClientEvent): void {
+    try {
+      this.#onEvent?.(event);
+    } catch {
+      // Never let event handler errors propagate
+    }
   }
 
   #compactUpdates() {

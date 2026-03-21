@@ -29,7 +29,6 @@ async function measureRound(client: GeminiClient): Promise<TimingResult> {
 
   const session: GeminiSession = await client.openSession({
     cwd: process.cwd(),
-    model: "gemini-3.1-flash",
     mode: "yolo",
   });
 

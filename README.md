@@ -4,7 +4,7 @@
 [![CI](https://github.com/nsalerni/gemini-acp/actions/workflows/ci.yml/badge.svg)](https://github.com/nsalerni/gemini-acp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Talk to the [Gemini CLI](https://ai.google.dev/gemini-cli) from Node.js over the **ACP (Agent Control Protocol)**. Stream agent responses, handle tool approvals, and manage sessions — all fully typed.
+Talk to the [Gemini CLI](https://ai.google.dev/gemini-cli) from Node.js over the **ACP (Agent Control Protocol)**. Stream agent responses, handle tool approvals, manage sessions, and connect MCP servers — all fully typed, zero dependencies.
 
 ## Install
 
@@ -32,6 +32,31 @@ await session.close();
 await client.close();
 ```
 
+Or get the result directly without streaming:
+
+```typescript
+import { collectTurn } from "@nsalerni/gemini-acp/helpers";
+
+const result = await collectTurn(session.send("Explain this codebase"));
+console.log(result.text);
+console.log(`${result.toolCalls.length} tools used`);
+```
+
+## Preflight Check
+
+Verify the Gemini CLI is installed before creating a client:
+
+```typescript
+import { preflightGemini } from "@nsalerni/gemini-acp";
+
+const check = await preflightGemini();
+if (!check.ok) {
+  console.error("Issues:", check.diagnostics);
+  // e.g. "Gemini CLI not found. Install from https://ai.google.dev/gemini-cli"
+}
+// check.version, check.binaryFound, check.acpSupported
+```
+
 ## Sending Prompts
 
 `session.send()` sends a prompt and returns a stream of updates in one call:
@@ -53,7 +78,8 @@ for await (const update of session.send([
 For low-level control, use `prompt()` + `updates()` separately:
 
 ```typescript
-await session.prompt("Explain this codebase");
+const result = await session.prompt("Explain this codebase");
+console.log(result.stopReason); // "end_turn", "max_tokens", "cancelled", etc.
 for await (const update of session.updates()) { ... }
 ```
 
@@ -75,6 +101,24 @@ for await (const update of session.send("Refactor the auth module")) {
 }
 ```
 
+## MCP Servers
+
+Connect MCP tool servers to your sessions:
+
+```typescript
+const client = await createGeminiClient({
+  mcpServers: [
+    { name: "filesystem", command: "npx", args: ["-y", "@anthropic/mcp-filesystem"] },
+    { name: "github", command: "npx", args: ["-y", "@anthropic/mcp-github"] },
+  ],
+});
+
+// Or per-session:
+const session = await client.openSession({
+  mcpServers: [{ name: "custom", command: "./my-tool-server" }],
+});
+```
+
 ## Modes & Permissions
 
 | Mode | Behavior |
@@ -84,7 +128,6 @@ for await (const update of session.send("Refactor the auth module")) {
 
 ```typescript
 const session = await client.openSession({
-  model: "gemini-3.1",
   mode: "plan",
   onPermissionRequest: async (request) => {
     const allow = request.options.find(o => o.kind === "allow_once");
@@ -94,17 +137,21 @@ const session = await client.openSession({
 });
 ```
 
-You can also set a default permission handler at the client level:
+Set a default handler at the client level (overridable per-session):
 
 ```typescript
-const client = await createGeminiClient({
-  onPermissionRequest: async (request) => {
-    // Default handler for all sessions (overridable per-session)
-    const allow = request.options.find(o => o.kind === "allow_once");
-    if (allow) return { outcome: { outcome: "selected", optionId: allow.optionId } };
-    return { outcome: { outcome: "cancelled" } };
-  },
-});
+const client = await createGeminiClient({ onPermissionRequest: handler });
+```
+
+## Sandboxed Sessions
+
+Run Gemini in isolation without affecting your main config:
+
+```typescript
+import { createIsolatedGeminiHome } from "@nsalerni/gemini-acp/helpers";
+
+const { env } = await createIsolatedGeminiHome({ stateDir: "/tmp/my-app" });
+const client = await createGeminiClient({ env });
 ```
 
 ## Session Resumption
@@ -114,7 +161,6 @@ const session = await client.openSession({ model: "gemini-3.1-flash" });
 const savedId = session.id;
 await session.close();
 
-// Later — resume the same conversation
 const resumed = await client.openSession({ resumeSessionId: savedId });
 ```
 
@@ -124,7 +170,30 @@ Pre-initialize a background session so `openSession()` is near-instant:
 
 ```typescript
 const client = await createGeminiClient({ warmStart: true });
-const session = await client.openSession({ model: "gemini-3.1-flash" }); // fast
+const session = await client.openSession(); // fast
+```
+
+## Observability
+
+Track lifecycle events for logging, metrics, or debugging:
+
+```typescript
+const client = await createGeminiClient({
+  onEvent: (event) => {
+    // event.type: "process_started" | "session_opened" | "prompt_started"
+    //   | "prompt_completed" | "prompt_failed" | "permission_requested"
+    //   | "permission_resolved" | "session_closed" | "warm_session_ready" | ...
+    console.log(`[${event.type}]`, event);
+  },
+});
+```
+
+## Raw ACP Escape Hatch
+
+Call any ACP method directly when the library doesn't wrap it yet:
+
+```typescript
+const result = await client.rawRequest("session/some_new_method", { sessionId, foo: "bar" });
 ```
 
 ## Client Options
@@ -136,7 +205,9 @@ const client = await createGeminiClient({
   warmStart: false,              // default
   warmStartTimeoutMs: 30_000,    // default
   promptTimeoutMs: 300_000,      // default (5 min), per-prompt timeout
-  onPermissionRequest: handler,  // default permission handler for all sessions
+  mcpServers: [],                // MCP tool servers
+  onPermissionRequest: handler,  // default permission handler
+  onEvent: (event) => {},        // lifecycle events
   logger: { debug, info, warn, error },
   onProtocolError: (err) => {},
 });
@@ -155,14 +226,23 @@ import {
 } from "@nsalerni/gemini-acp";
 ```
 
-`prompt()` returns the stop reason so you can distinguish normal completion from cancellation:
+## Troubleshooting
 
-```typescript
-const result = await session.prompt("Explain this");
-if (result.stopReason === "max_tokens") {
-  console.log("Response was truncated");
-}
-```
+| Problem | Solution |
+|---------|----------|
+| `ENOENT` / binary not found | Install [Gemini CLI](https://ai.google.dev/gemini-cli) or pass `binaryPath` |
+| Auth errors | Run `gemini auth login` |
+| Timeouts | Increase `promptTimeoutMs` or check network |
+| `GeminiSessionBusyError` | Only one `send()`/`updates()` consumer per turn; only one prompt at a time |
+| Hung process | `pkill -f "gemini --acp"` and retry |
+
+Use `preflightGemini()` to diagnose issues before creating a client.
+
+## Compatibility
+
+| Library | ACP Version | Gemini CLI |
+|---------|-------------|-----------|
+| 0.1.x   | 1           | 0.30+     |
 
 ## Architecture
 

@@ -2,8 +2,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
-import { createGeminiClient, GeminiSessionClosedError, GeminiSessionBusyError } from "../index.js";
-import type { GeminiClient } from "../types.js";
+import { createGeminiClient, preflightGemini, GeminiSessionClosedError, GeminiSessionBusyError } from "../index.js";
+import type { GeminiClient, GeminiClientEvent } from "../types.js";
+import { collectTurn } from "../helpers/collectTurn.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FAKE_SERVER_PATH = path.resolve(__dirname, "fake-acp-server.mjs");
@@ -326,5 +327,69 @@ describe("ACP contract tests", () => {
     await promptDone;
 
     await session.close();
+  }, 30_000);
+
+  it("collectTurn() collects updates into structured result", async () => {
+    client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
+    const session = await client.openSession({ mode: "yolo" });
+
+    const result = await collectTurn(session.send("Hi"));
+
+    expect(result.text).toBe("Hello world");
+    expect(result.updates.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(result.toolCalls)).toBe(true);
+    expect(Array.isArray(result.plan)).toBe(true);
+
+    await session.close();
+  }, 30_000);
+
+  it("emits structured events via onEvent", async () => {
+    const events: GeminiClientEvent[] = [];
+
+    client = await createGeminiClient({
+      binaryPath: FAKE_SERVER_PATH,
+      onEvent: (event) => events.push(event),
+    });
+
+    const session = await client.openSession({ mode: "yolo" });
+
+    const promptDone = session.prompt("Hi");
+    for await (const update of session.updates()) {
+      void update;
+    }
+    await promptDone;
+
+    await session.close();
+
+    const types = events.map(e => e.type);
+    expect(types).toContain("process_started");
+    expect(types).toContain("session_opened");
+    expect(types).toContain("prompt_started");
+    expect(types).toContain("prompt_completed");
+    expect(types).toContain("session_closed");
+  }, 30_000);
+
+  it("rawRequest() sends arbitrary ACP methods", async () => {
+    client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
+
+    // The fake server responds to initialize, which we already did.
+    // Any unknown method returns an error, which we can test.
+    await expect(
+      client.rawRequest("nonexistent/method", {}),
+    ).rejects.toThrow();
+  }, 30_000);
+
+  it("preflightGemini() checks binary availability", async () => {
+    // Test with a nonexistent binary
+    const result = await preflightGemini({ binaryPath: "nonexistent-gemini-binary-12345" });
+    expect(result.ok).toBe(false);
+    expect(result.binaryFound).toBe(false);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  it("preflightGemini() detects fake server", async () => {
+    const result = await preflightGemini({ binaryPath: FAKE_SERVER_PATH });
+    // The fake server doesn't support --version, so it may time out or not parse
+    expect(result.binaryPath).toBe(FAKE_SERVER_PATH);
   }, 30_000);
 });

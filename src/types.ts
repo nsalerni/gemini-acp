@@ -192,6 +192,30 @@ export interface GeminiLogger {
   error?(message: string, meta?: unknown): void;
 }
 
+// MCP server configuration
+export interface GeminiMcpServer {
+  readonly name: string;
+  readonly command: string;
+  readonly args?: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly cwd?: string;
+}
+
+// Client event types for observability
+export type GeminiClientEvent =
+  | { readonly type: "process_started"; readonly binaryPath: string; readonly cwd: string }
+  | { readonly type: "process_exited"; readonly code: number | null; readonly signal: string | null }
+  | { readonly type: "session_opened"; readonly sessionId: string; readonly model?: string; readonly warm: boolean }
+  | { readonly type: "session_closed"; readonly sessionId: string }
+  | { readonly type: "prompt_started"; readonly sessionId: string }
+  | { readonly type: "prompt_completed"; readonly sessionId: string; readonly stopReason: string }
+  | { readonly type: "prompt_failed"; readonly sessionId: string; readonly error: string }
+  | { readonly type: "permission_requested"; readonly sessionId: string }
+  | { readonly type: "permission_resolved"; readonly sessionId: string; readonly outcome: string }
+  | { readonly type: "warm_session_ready"; readonly sessionId: string }
+  | { readonly type: "warm_session_consumed"; readonly sessionId: string }
+  | { readonly type: "warm_session_failed"; readonly error: string };
+
 // Permission handler type
 export type PermissionHandler = (
   request: GeminiAcpPermissionRequest
@@ -234,6 +258,17 @@ export interface GeminiClientOptions {
    * Can be overridden per-session via GeminiSessionOptions.onPermissionRequest.
    */
   onPermissionRequest?: PermissionHandler;
+
+  /**
+   * Callback for structured lifecycle events (observability).
+   */
+  onEvent?: (event: GeminiClientEvent) => void;
+
+  /**
+   * MCP servers to register with all sessions by default.
+   * Can be overridden per-session via GeminiSessionOptions.mcpServers.
+   */
+  mcpServers?: readonly GeminiMcpServer[];
 
   /**
    * Default prompt timeout in milliseconds. Defaults to 300000 (5 minutes).
@@ -280,6 +315,11 @@ export interface GeminiSessionOptions {
    * Callback for handling permission requests. Overrides client-level handler.
    */
   onPermissionRequest?: PermissionHandler;
+
+  /**
+   * MCP servers to register with this session. Overrides client-level mcpServers.
+   */
+  mcpServers?: readonly GeminiMcpServer[];
 
   /**
    * Prompt timeout in milliseconds. Overrides client-level promptTimeoutMs.
@@ -360,6 +400,12 @@ export interface GeminiClient {
    * All options are optional — defaults to the client's cwd and yolo mode.
    */
   openSession(options?: GeminiSessionOptions): Promise<GeminiSession>;
+
+  /**
+   * Send a raw ACP JSON-RPC request. Use this to access new ACP methods
+   * that the library doesn't wrap yet.
+   */
+  rawRequest<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T>;
 
   /**
    * Gracefully shut down the client and terminate the Gemini CLI process

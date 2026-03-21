@@ -14,6 +14,7 @@ import {
   type GeminiSessionUpdate,
   type GeminiContentBlock,
   type GeminiAcpPromptResponse,
+  type GeminiMcpServer,
   type GeminiLogger,
 } from "./types.js";
 import { JsonRpcStdioClient } from "./JsonRpcStdioClient.js";
@@ -90,11 +91,14 @@ export class GeminiAcpBroker {
     readonly createRoute: (sessionId: string) => BrokerRoute;
     readonly resumeSessionId?: string | undefined;
     readonly model?: string | undefined;
+    readonly mcpServers?: readonly GeminiMcpServer[] | undefined;
   }) {
     let sessionId: string;
     let currentModel: string | undefined;
     let routeRegistered = false;
     let route: BrokerRoute | undefined;
+
+    const mcpServers = input.mcpServers ?? [];
 
     try {
       if (input.resumeSessionId) {
@@ -108,7 +112,7 @@ export class GeminiAcpBroker {
           {
             sessionId: input.resumeSessionId,
             cwd: input.cwd,
-            mcpServers: [],
+            mcpServers,
           },
           DEFAULT_REQUEST_TIMEOUT_MS
         );
@@ -119,7 +123,7 @@ export class GeminiAcpBroker {
           ACP_METHOD_SESSION_NEW,
           {
             cwd: input.cwd,
-            mcpServers: [],
+            mcpServers,
           },
           DEFAULT_REQUEST_TIMEOUT_MS
         );
@@ -225,6 +229,10 @@ export class GeminiAcpBroker {
   releaseSession(sessionId: string) {
     this.logger?.debug?.("Releasing session route...", { sessionId });
     this.#routes.delete(sessionId);
+  }
+
+  async rawRequest<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
+    return await this.client.request<T>(method, params, timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS);
   }
 
   async stop() {

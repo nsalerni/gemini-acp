@@ -4,6 +4,8 @@
 
 // Main exports
 export { createGeminiClient } from "./client.js";
+export { preflightGemini } from "./preflight.js";
+export type { PreflightResult, PreflightOptions } from "./preflight.js";
 export type { GeminiClient, GeminiSession } from "./types.js";
 
 // Types
@@ -16,6 +18,8 @@ export type {
   GeminiAcpPermissionRequest,
   GeminiAcpPermissionOption,
   GeminiAcpPromptResponse,
+  GeminiMcpServer,
+  GeminiClientEvent,
   PermissionHandler,
   GeminiLogger,
   GeminiAcpToolKind,

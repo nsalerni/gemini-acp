@@ -43,6 +43,8 @@
     "example:03": "tsx examples/03-permission-handling.ts",
     "example:04": "tsx examples/04-session-resume.ts",
     "example:05": "tsx examples/05-warm-start.ts",
+    "bench": "vitest bench",
+    "bench:run": "vitest bench --run",
     "bench:warm-start": "tsx examples/bench-warm-start.ts",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
