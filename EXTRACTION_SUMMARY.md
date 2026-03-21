@@ -129,7 +129,7 @@ for await (const update of session.updates()) {
 
 // Control
 await session.setMode("plan");
-await session.setModel("gemini-2.0-flash");
+await session.setModel("gemini-3.1-flash");
 await session.cancel();
 await session.close();
 

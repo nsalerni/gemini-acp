@@ -267,6 +267,11 @@ export interface GeminiSessionOptions {
   }>;
 }
 
+/**
+ * A prompt can be a plain string (sent as a single text block) or an array of content blocks.
+ */
+export type GeminiPromptInput = string | readonly GeminiContentBlock[];
+
 export interface GeminiSession {
   /**
    * The unique session ID
@@ -279,9 +284,27 @@ export interface GeminiSession {
   readonly currentModel?: string;
 
   /**
-   * Send a prompt and stream updates back
+   * Send a prompt and return a stream of updates.
+   * This is the recommended way to interact with the agent — it sends the prompt
+   * and returns an async iterable of all updates for the turn in a single call.
+   *
+   * @example
+   * ```ts
+   * for await (const update of session.send("Explain this code")) {
+   *   if (update.sessionUpdate === "agent_message_chunk") {
+   *     process.stdout.write(update.content?.text ?? "");
+   *   }
+   * }
+   * ```
    */
-  prompt(blocks: readonly GeminiContentBlock[]): Promise<void>;
+  send(input: GeminiPromptInput): AsyncIterable<GeminiSessionUpdate>;
+
+  /**
+   * Send a prompt and wait for the turn to complete.
+   * Use this with `updates()` when you need separate control over prompt submission
+   * and update consumption.
+   */
+  prompt(input: GeminiPromptInput): Promise<void>;
 
   /**
    * Change session mode
@@ -299,7 +322,8 @@ export interface GeminiSession {
   cancel(): Promise<void>;
 
   /**
-   * Get an async iterable of all updates from the agent
+   * Get an async iterable of updates for the current turn.
+   * Typically used with `prompt()` for low-level control.
    */
   updates(): AsyncIterable<GeminiSessionUpdate>;
 

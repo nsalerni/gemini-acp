@@ -50,6 +50,43 @@ describe("ACP contract tests", () => {
     await session.close();
   }, 30_000);
 
+  it("accepts a plain string prompt", async () => {
+    client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
+    const session = await client.openSession({ mode: "yolo" });
+
+    const updates: unknown[] = [];
+
+    const promptDone = session.prompt("Hi");
+    for await (const update of session.updates()) {
+      updates.push(update);
+    }
+    await promptDone;
+
+    const chunks = updates.filter(
+      (u: unknown) => (u as { sessionUpdate?: string }).sessionUpdate === "agent_message_chunk",
+    );
+    expect(chunks.length).toBeGreaterThanOrEqual(1);
+
+    await session.close();
+  }, 30_000);
+
+  it("send() streams updates in a single call", async () => {
+    client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
+    const session = await client.openSession({ mode: "yolo" });
+
+    const updates: unknown[] = [];
+    for await (const update of session.send("Hi")) {
+      updates.push(update);
+    }
+
+    const chunks = updates.filter(
+      (u: unknown) => (u as { sessionUpdate?: string }).sessionUpdate === "agent_message_chunk",
+    );
+    expect(chunks.length).toBeGreaterThanOrEqual(1);
+
+    await session.close();
+  }, 30_000);
+
   it("rejects concurrent prompts", async () => {
     client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
     const session = await client.openSession({ mode: "yolo" });

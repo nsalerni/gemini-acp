@@ -6,35 +6,21 @@ import { createGeminiClient } from "../src/index.js";
 import { imageFileToContentBlock } from "../src/helpers/imageFileToContentBlock.js";
 
 async function main() {
-  const client = await createGeminiClient({
-    cwd: process.cwd(),
-  });
+  const client = await createGeminiClient();
+  const session = await client.openSession({ model: "gemini-3.1-flash" });
 
-  const session = await client.openSession({
-    cwd: process.cwd(),
-    model: "gemini-3-flash-preview",
-    mode: "yolo",
-  });
-
-  // Load an image from disk
   const imageBlock = await imageFileToContentBlock("./example.png");
 
-  // Send prompt with image
-  await session.prompt([
-    {
-      type: "text",
-      text: "Analyze this image and describe what you see",
-    },
+  for await (const update of session.send([
+    { type: "text", text: "Describe what you see in this image" },
     imageBlock,
-  ]);
-
-  // Stream response
-  for await (const update of session.updates()) {
+  ])) {
     if (update.sessionUpdate === "agent_message_chunk") {
       process.stdout.write(update.content?.text ?? "");
     }
   }
 
+  console.log();
   await session.close();
   await client.close();
 }

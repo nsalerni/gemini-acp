@@ -10,6 +10,7 @@ export type { GeminiClient, GeminiSession } from "./types.js";
 export type {
   GeminiClientOptions,
   GeminiSessionOptions,
+  GeminiPromptInput,
   GeminiContentBlock,
   GeminiSessionUpdate,
   GeminiAcpPermissionRequest,

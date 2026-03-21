@@ -5,65 +5,28 @@
 import { createGeminiClient } from "../src/index.js";
 
 async function main() {
-  const client = await createGeminiClient({
-    cwd: process.cwd(),
-    logger: {
-      debug: (msg) => console.log("[DEBUG]", msg),
-      info: (msg) => console.log("[INFO]", msg),
-      warn: (msg) => console.warn("[WARN]", msg),
-      error: (msg) => console.error("[ERROR]", msg),
-    },
-  });
+  const client = await createGeminiClient();
 
   const session = await client.openSession({
-    cwd: process.cwd(),
-    model: "gemini-3-flash-preview",
+    model: "gemini-3.1-flash",
     mode: "plan",
     onPermissionRequest: async (request) => {
-      console.log("\n🔒 Permission request received:");
-      console.log(`  Session: ${request.sessionId}`);
-      console.log("  Options:");
+      console.log(`\n🔒 Permission request for session ${request.sessionId}`);
 
-      for (const option of request.options) {
-        console.log(`    - ${option.optionId}: ${option.kind}`);
-      }
-
-      // Auto-approve the first "allow" option
       const allowOption = request.options.find(
-        (opt) => opt.kind === "allow_once" || opt.kind === "allow_always"
+        (opt) => opt.kind === "allow_once" || opt.kind === "allow_always",
       );
 
       if (allowOption) {
         console.log(`  ✅ Approving: ${allowOption.optionId}`);
-        return {
-          outcome: {
-            outcome: "selected",
-            optionId: allowOption.optionId,
-          },
-        };
+        return { outcome: { outcome: "selected", optionId: allowOption.optionId } };
       }
 
-      console.log("  ❌ No allow option found, cancelling");
-      return {
-        outcome: {
-          outcome: "cancelled",
-        },
-      };
+      return { outcome: { outcome: "cancelled" } };
     },
   });
 
-  console.log("📝 Session opened in plan mode");
-
-  // Send a prompt
-  await session.prompt([
-    {
-      type: "text",
-      text: "What is 2 + 2? Answer briefly.",
-    },
-  ]);
-
-  // Stream updates
-  for await (const update of session.updates()) {
+  for await (const update of session.send("What is 2 + 2? Answer briefly.")) {
     switch (update.sessionUpdate) {
       case "plan":
         console.log("\n📋 Plan:");
@@ -71,25 +34,16 @@ async function main() {
           console.log(`  [${entry.status}] ${entry.content}`);
         }
         break;
-
       case "agent_message_chunk":
         process.stdout.write(update.content?.text ?? "");
         break;
-
       case "tool_call":
-        console.log(`\n🛠️  Calling: ${update.title}`);
-        break;
-
-      case "tool_call_update":
-        if (update.status === "completed") {
-          console.log(`✅ ${update.title} completed`);
-        }
+        console.log(`\n🛠️  Tool: ${update.title}`);
         break;
     }
   }
 
-  console.log("\n\n✨ Done");
-
+  console.log();
   await session.close();
   await client.close();
 }

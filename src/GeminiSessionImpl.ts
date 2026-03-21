@@ -2,10 +2,15 @@ import {
   type GeminiSession,
   type GeminiSessionUpdate,
   type GeminiContentBlock,
+  type GeminiPromptInput,
   type GeminiLogger,
 } from "./types.js";
 import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
 import { GeminiSessionClosedError } from "./errors.js";
+
+function normalizePromptInput(input: GeminiPromptInput): readonly GeminiContentBlock[] {
+  return typeof input === "string" ? [{ type: "text", text: input }] : input;
+}
 
 export class GeminiSessionImpl implements GeminiSession {
   readonly id: string;
@@ -16,7 +21,7 @@ export class GeminiSessionImpl implements GeminiSession {
   #updateResolvers: Array<(update: GeminiSessionUpdate | null) => void> = [];
   #closed = false;
   #prompting = false;
-  #turnComplete = false;
+  #turnComplete = true;
   #error?: Error;
 
   private constructor(
@@ -43,7 +48,34 @@ export class GeminiSessionImpl implements GeminiSession {
     return this.#currentModel;
   }
 
-  async prompt(blocks: readonly GeminiContentBlock[]): Promise<void> {
+  async prompt(input: GeminiPromptInput): Promise<void> {
+    await this.#startPrompt(normalizePromptInput(input));
+  }
+
+  send(input: GeminiPromptInput): AsyncIterable<GeminiSessionUpdate> {
+    const completion = this.#startPrompt(normalizePromptInput(input)).then(
+      () => ({ ok: true as const }),
+      (error) => ({
+        ok: false as const,
+        error: error instanceof Error ? error : new Error(String(error)),
+      }),
+    );
+    return this.#sendUpdates(completion);
+  }
+
+  async *#sendUpdates(
+    completion: Promise<{ ok: true } | { ok: false; error: Error }>,
+  ): AsyncIterable<GeminiSessionUpdate> {
+    for await (const update of this.updates()) {
+      yield update;
+    }
+    const result = await completion;
+    if (!result.ok) {
+      throw result.error;
+    }
+  }
+
+  #startPrompt(blocks: readonly GeminiContentBlock[]): Promise<void> {
     if (this.#closed) {
       throw new GeminiSessionClosedError("Session is closed");
     }
@@ -53,25 +85,26 @@ export class GeminiSessionImpl implements GeminiSession {
 
     this.logger?.debug?.("Sending prompt...", { sessionId: this.id, blockCount: blocks.length });
 
-    // Clear previous updates and reset turn state
     this.#updates = [];
     this.#turnComplete = false;
     this.#prompting = true;
 
-    try {
-      await this.#broker.prompt(this.id, blocks);
-      this.logger?.debug?.("Prompt completed", { sessionId: this.id });
-    } catch (error) {
-      this.logger?.error?.(
-        "Prompt failed",
-        error instanceof Error ? error.message : String(error)
-      );
-      throw error;
-    } finally {
-      this.#prompting = false;
-      this.#turnComplete = true;
-      this.notifyAllResolvers();
-    }
+    return (async () => {
+      try {
+        await this.#broker.prompt(this.id, blocks);
+        this.logger?.debug?.("Prompt completed", { sessionId: this.id });
+      } catch (error) {
+        this.logger?.error?.(
+          "Prompt failed",
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      } finally {
+        this.#prompting = false;
+        this.#turnComplete = true;
+        this.notifyAllResolvers();
+      }
+    })();
   }
 
   async setMode(mode: "yolo" | "plan"): Promise<void> {
