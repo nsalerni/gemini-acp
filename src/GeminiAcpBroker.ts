@@ -198,14 +198,15 @@ export class GeminiAcpBroker {
     );
   }
 
-  async prompt(sessionId: string, prompt: readonly GeminiContentBlock[]) {
+  async prompt(sessionId: string, prompt: readonly GeminiContentBlock[], timeoutMs?: number) {
     this.logger?.debug?.("Sending prompt...", { sessionId, blockCount: prompt.length });
     return await this.client.request<GeminiAcpPromptResponse>(
       ACP_METHOD_SESSION_PROMPT,
       {
         sessionId,
         prompt,
-      }
+      },
+      timeoutMs,
     );
   }
 
@@ -251,7 +252,19 @@ export class GeminiAcpBroker {
         },
       };
     }
-    return await route.onPermissionRequest(request);
+    try {
+      return await route.onPermissionRequest(request);
+    } catch (error) {
+      this.logger?.error?.(
+        "Permission handler threw, cancelling",
+        error instanceof Error ? error.message : String(error),
+      );
+      return {
+        outcome: {
+          outcome: "cancelled" as const,
+        },
+      };
+    }
   }
 
   private handleClose(input: {

@@ -94,6 +94,19 @@ const session = await client.openSession({
 });
 ```
 
+You can also set a default permission handler at the client level:
+
+```typescript
+const client = await createGeminiClient({
+  onPermissionRequest: async (request) => {
+    // Default handler for all sessions (overridable per-session)
+    const allow = request.options.find(o => o.kind === "allow_once");
+    if (allow) return { outcome: { outcome: "selected", optionId: allow.optionId } };
+    return { outcome: { outcome: "cancelled" } };
+  },
+});
+```
+
 ## Session Resumption
 
 ```typescript
@@ -122,6 +135,8 @@ const client = await createGeminiClient({
   cwd: process.cwd(),           // default
   warmStart: false,              // default
   warmStartTimeoutMs: 30_000,    // default
+  promptTimeoutMs: 300_000,      // default (5 min), per-prompt timeout
+  onPermissionRequest: handler,  // default permission handler for all sessions
   logger: { debug, info, warn, error },
   onProtocolError: (err) => {},
 });
@@ -133,10 +148,20 @@ const client = await createGeminiClient({
 import {
   GeminiProcessError,     // CLI failed to start
   GeminiProtocolError,    // ACP protocol violation
-  GeminiTimeoutError,     // request timed out
+  GeminiTimeoutError,     // request or prompt timed out
   GeminiRequestError,     // ACP method call failed
   GeminiSessionClosedError,
+  GeminiSessionBusyError, // concurrent prompt or duplicate consumer
 } from "@nsalerni/gemini-acp";
+```
+
+`prompt()` returns the stop reason so you can distinguish normal completion from cancellation:
+
+```typescript
+const result = await session.prompt("Explain this");
+if (result.stopReason === "max_tokens") {
+  console.log("Response was truncated");
+}
 ```
 
 ## Architecture

@@ -3,10 +3,11 @@ import {
   type GeminiSessionUpdate,
   type GeminiContentBlock,
   type GeminiPromptInput,
+  type GeminiAcpPromptResponse,
   type GeminiLogger,
 } from "./types.js";
 import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
-import { GeminiSessionClosedError } from "./errors.js";
+import { GeminiSessionClosedError, GeminiSessionBusyError } from "./errors.js";
 
 function normalizePromptInput(input: GeminiPromptInput): readonly GeminiContentBlock[] {
   return typeof input === "string" ? [{ type: "text", text: input }] : input;
@@ -18,17 +19,22 @@ export class GeminiSessionImpl implements GeminiSession {
   #currentModel: string | undefined;
   #broker: GeminiAcpBroker;
   #updates: GeminiSessionUpdate[] = [];
+  #updatesHead = 0;
   #updateResolvers: Array<(update: GeminiSessionUpdate | null) => void> = [];
+  #resolversHead = 0;
   #closed = false;
   #prompting = false;
+  #consuming = false;
   #turnComplete = true;
+  #promptTimeoutMs: number | undefined;
   #error?: Error;
+  #onDispose?: (sessionId: string) => void;
 
   private constructor(
     sessionId: string,
     broker: GeminiAcpBroker,
     currentModel: string | undefined,
-    private logger?: GeminiLogger
+    private logger?: GeminiLogger,
   ) {
     this.id = sessionId;
     this.#broker = broker;
@@ -39,17 +45,29 @@ export class GeminiSessionImpl implements GeminiSession {
     sessionId: string,
     broker: GeminiAcpBroker,
     currentModel: string | undefined,
-    logger?: GeminiLogger
+    logger?: GeminiLogger,
+    options?: {
+      promptTimeoutMs?: number;
+      onDispose?: (sessionId: string) => void;
+    },
   ): GeminiSessionImpl {
-    return new GeminiSessionImpl(sessionId, broker, currentModel, logger);
+    const session = new GeminiSessionImpl(sessionId, broker, currentModel, logger);
+    session.#promptTimeoutMs = options?.promptTimeoutMs;
+    session.#onDispose = options?.onDispose;
+    return session;
   }
 
   get currentModel(): string | undefined {
     return this.#currentModel;
   }
 
-  async prompt(input: GeminiPromptInput): Promise<void> {
-    await this.#startPrompt(normalizePromptInput(input));
+  /** @internal */
+  setCurrentModel(model: string | undefined): void {
+    this.#currentModel = model;
+  }
+
+  async prompt(input: GeminiPromptInput): Promise<GeminiAcpPromptResponse> {
+    return await this.#startPrompt(normalizePromptInput(input));
   }
 
   send(input: GeminiPromptInput): AsyncIterable<GeminiSessionUpdate> {
@@ -75,24 +93,27 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
-  #startPrompt(blocks: readonly GeminiContentBlock[]): Promise<void> {
+  #startPrompt(blocks: readonly GeminiContentBlock[]): Promise<GeminiAcpPromptResponse> {
     if (this.#closed) {
       throw new GeminiSessionClosedError("Session is closed");
     }
     if (this.#prompting) {
-      throw new GeminiSessionClosedError("A prompt is already in progress on this session");
+      throw new GeminiSessionBusyError("A prompt is already in progress on this session");
     }
 
     this.logger?.debug?.("Sending prompt...", { sessionId: this.id, blockCount: blocks.length });
 
-    this.#updates = [];
+    this.#compactUpdates();
+    this.#updates.length = 0;
+    this.#updatesHead = 0;
     this.#turnComplete = false;
     this.#prompting = true;
 
     return (async () => {
       try {
-        await this.#broker.prompt(this.id, blocks);
+        const response = await this.#broker.prompt(this.id, blocks, this.#promptTimeoutMs);
         this.logger?.debug?.("Prompt completed", { sessionId: this.id });
+        return response;
       } catch (error) {
         this.logger?.error?.(
           "Prompt failed",
@@ -102,7 +123,7 @@ export class GeminiSessionImpl implements GeminiSession {
       } finally {
         this.#prompting = false;
         this.#turnComplete = true;
-        this.notifyAllResolvers();
+        this.#notifyAllResolvers();
       }
     })();
   }
@@ -135,31 +156,45 @@ export class GeminiSessionImpl implements GeminiSession {
   }
 
   async *updates(): AsyncIterable<GeminiSessionUpdate> {
-    // Yield any buffered updates first
-    while (this.#updates.length > 0) {
-      yield this.#updates.shift()!;
+    if (this.#consuming) {
+      throw new GeminiSessionBusyError(
+        "Another consumer is already iterating updates on this session. " +
+        "Only one updates() or send() consumer is allowed per turn.",
+      );
     }
+    this.#consuming = true;
 
-    // Then yield future updates until turn completes or session closes
-    while (!this.#closed && !this.#turnComplete) {
-      const update = await new Promise<GeminiSessionUpdate | null>((resolve) => {
-        this.#updateResolvers.push(resolve);
-      });
+    try {
+      // Yield any buffered updates first (indexed queue)
+      while (this.#updatesHead < this.#updates.length) {
+        yield this.#updates[this.#updatesHead++];
+      }
+      this.#compactUpdates();
 
-      if (update === null) {
-        break;
+      // Then yield future updates until turn completes or session closes
+      while (!this.#closed && !this.#turnComplete) {
+        const update = await new Promise<GeminiSessionUpdate | null>((resolve) => {
+          this.#updateResolvers.push(resolve);
+        });
+
+        if (update === null) {
+          break;
+        }
+
+        yield update;
       }
 
-      yield update;
-    }
+      // Drain any remaining buffered updates
+      while (this.#updatesHead < this.#updates.length) {
+        yield this.#updates[this.#updatesHead++];
+      }
+      this.#compactUpdates();
 
-    // Drain any remaining buffered updates
-    while (this.#updates.length > 0) {
-      yield this.#updates.shift()!;
-    }
-
-    if (this.#error) {
-      throw this.#error;
+      if (this.#error) {
+        throw this.#error;
+      }
+    } finally {
+      this.#consuming = false;
     }
   }
 
@@ -171,14 +206,23 @@ export class GeminiSessionImpl implements GeminiSession {
     this.logger?.debug?.("Closing session...", { sessionId: this.id });
     this.#closed = true;
     this.#broker.releaseSession(this.id);
-    this.notifyAllResolvers();
+    this.#notifyAllResolvers();
+    this.#onDispose?.(this.id);
   }
 
-  private notifyAllResolvers() {
-    for (const resolver of this.#updateResolvers) {
-      resolver(null);
+  #notifyAllResolvers() {
+    for (let i = this.#resolversHead; i < this.#updateResolvers.length; i++) {
+      this.#updateResolvers[i](null);
     }
-    this.#updateResolvers = [];
+    this.#updateResolvers.length = 0;
+    this.#resolversHead = 0;
+  }
+
+  #compactUpdates() {
+    if (this.#updatesHead > 0) {
+      this.#updates.splice(0, this.#updatesHead);
+      this.#updatesHead = 0;
+    }
   }
 
   // Public methods for route handlers
@@ -187,8 +231,13 @@ export class GeminiSessionImpl implements GeminiSession {
       return;
     }
 
-    if (this.#updateResolvers.length > 0) {
-      const resolver = this.#updateResolvers.shift()!;
+    if (this.#resolversHead < this.#updateResolvers.length) {
+      const resolver = this.#updateResolvers[this.#resolversHead++];
+      // Compact resolvers when they grow
+      if (this.#resolversHead > 64) {
+        this.#updateResolvers.splice(0, this.#resolversHead);
+        this.#resolversHead = 0;
+      }
       resolver(update);
     } else {
       this.#updates.push(update);
@@ -198,6 +247,7 @@ export class GeminiSessionImpl implements GeminiSession {
   handleBrokerClose(closeInput: { error?: Error; stderr: string }): void {
     this.#error = closeInput.error ?? new Error(closeInput.stderr.trim() || "Broker closed");
     this.#closed = true;
-    this.notifyAllResolvers();
+    this.#notifyAllResolvers();
+    this.#onDispose?.(this.id);
   }
 }

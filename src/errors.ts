@@ -55,3 +55,11 @@ export class GeminiSessionClosedError extends GeminiError {
     Object.setPrototypeOf(this, GeminiSessionClosedError.prototype);
   }
 }
+
+export class GeminiSessionBusyError extends GeminiError {
+  constructor(message: string, options?: { cause?: unknown; metadata?: Record<string, unknown> }) {
+    super(message, options);
+    this.name = "GeminiSessionBusyError";
+    Object.setPrototypeOf(this, GeminiSessionBusyError.prototype);
+  }
+}

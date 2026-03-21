@@ -15,6 +15,8 @@ export type {
   GeminiSessionUpdate,
   GeminiAcpPermissionRequest,
   GeminiAcpPermissionOption,
+  GeminiAcpPromptResponse,
+  PermissionHandler,
   GeminiLogger,
   GeminiAcpToolKind,
   GeminiAcpToolStatus,
@@ -30,6 +32,7 @@ export {
   GeminiRequestError,
   GeminiTimeoutError,
   GeminiSessionClosedError,
+  GeminiSessionBusyError,
 } from "./errors.js";
 
 // Constants (exported for advanced use cases)
@@ -45,4 +48,5 @@ export {
   ACP_METHOD_SESSION_UPDATE,
   ACP_METHOD_SESSION_REQUEST_PERMISSION,
   DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_PROMPT_TIMEOUT_MS,
 } from "./constants.js";

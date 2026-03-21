@@ -192,6 +192,16 @@ export interface GeminiLogger {
   error?(message: string, meta?: unknown): void;
 }
 
+// Permission handler type
+export type PermissionHandler = (
+  request: GeminiAcpPermissionRequest
+) => Promise<{
+  outcome: {
+    outcome: "selected" | "cancelled";
+    optionId?: string;
+  };
+}>;
+
 // Public API types
 export interface GeminiClientOptions {
   /**
@@ -218,6 +228,18 @@ export interface GeminiClientOptions {
    * Callback for protocol-level errors
    */
   onProtocolError?: (error: Error) => void;
+
+  /**
+   * Default callback for handling permission requests across all sessions.
+   * Can be overridden per-session via GeminiSessionOptions.onPermissionRequest.
+   */
+  onPermissionRequest?: PermissionHandler;
+
+  /**
+   * Default prompt timeout in milliseconds. Defaults to 300000 (5 minutes).
+   * Can be overridden per-session via GeminiSessionOptions.promptTimeoutMs.
+   */
+  promptTimeoutMs?: number;
 
   /**
    * Enable warm session starting.
@@ -255,16 +277,14 @@ export interface GeminiSessionOptions {
   mode?: "yolo" | "plan";
 
   /**
-   * Callback for handling permission requests
+   * Callback for handling permission requests. Overrides client-level handler.
    */
-  onPermissionRequest?: (
-    request: GeminiAcpPermissionRequest
-  ) => Promise<{
-    outcome: {
-      outcome: "selected" | "cancelled";
-      optionId?: string;
-    };
-  }>;
+  onPermissionRequest?: PermissionHandler;
+
+  /**
+   * Prompt timeout in milliseconds. Overrides client-level promptTimeoutMs.
+   */
+  promptTimeoutMs?: number;
 }
 
 /**
@@ -301,10 +321,11 @@ export interface GeminiSession {
 
   /**
    * Send a prompt and wait for the turn to complete.
+   * Returns the prompt response including the stop reason.
    * Use this with `updates()` when you need separate control over prompt submission
    * and update consumption.
    */
-  prompt(input: GeminiPromptInput): Promise<void>;
+  prompt(input: GeminiPromptInput): Promise<GeminiAcpPromptResponse>;
 
   /**
    * Change session mode
@@ -335,9 +356,10 @@ export interface GeminiSession {
 
 export interface GeminiClient {
   /**
-   * Open a new session or resume an existing one
+   * Open a new session or resume an existing one.
+   * All options are optional — defaults to the client's cwd and yolo mode.
    */
-  openSession(options: GeminiSessionOptions): Promise<GeminiSession>;
+  openSession(options?: GeminiSessionOptions): Promise<GeminiSession>;
 
   /**
    * Gracefully shut down the client and terminate the Gemini CLI process

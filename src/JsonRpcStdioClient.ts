@@ -304,11 +304,16 @@ export class JsonRpcStdioClient {
         clearTimeout(pending.timeout);
       }
       if ("error" in message) {
-        this.logger?.debug?.(`Request ${message.id} failed: ${message.error.message}`);
+        const err: unknown = message.error;
+        const errObj = (err && typeof err === "object") ? err as Record<string, unknown> : undefined;
+        const errMsg = (errObj && typeof errObj.message === "string") ? errObj.message : "Unknown ACP error";
+        const errCode = (errObj && typeof errObj.code === "number") ? errObj.code : -1;
+        const errData = errObj?.data;
+        this.logger?.debug?.(`Request ${message.id} failed: ${errMsg}`);
         pending.reject(new GeminiRequestError(
-          message.error.message,
-          message.error.code,
-          message.error.data ? { metadata: { data: message.error.data } } : undefined,
+          errMsg,
+          errCode,
+          errData ? { metadata: { data: errData } } : undefined,
         ));
       } else {
         this.logger?.debug?.(`Request ${message.id} succeeded`);
