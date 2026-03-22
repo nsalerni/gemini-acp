@@ -196,6 +196,24 @@ Call any ACP method directly when the library doesn't wrap it yet:
 const result = await client.rawRequest("session/some_new_method", { sessionId, foo: "bar" });
 ```
 
+## Timeouts
+
+By default, prompts run indefinitely — the agent works until it finishes or you call `session.cancel()`. To enforce a time limit, set `promptTimeoutMs` at the client or session level:
+
+```typescript
+// Client-level: applies to all sessions
+const client = await createGeminiClient({
+  promptTimeoutMs: 300_000, // 5 minutes
+});
+
+// Session-level: overrides client default
+const session = await client.openSession({
+  promptTimeoutMs: 60_000, // 1 minute for this session
+});
+```
+
+A `GeminiTimeoutError` is thrown if the prompt exceeds the configured limit.
+
 ## Client Options
 
 ```typescript
@@ -204,7 +222,7 @@ const client = await createGeminiClient({
   cwd: process.cwd(),           // default
   warmStart: false,              // default
   warmStartTimeoutMs: 30_000,    // default
-  promptTimeoutMs: 300_000,      // default (5 min), per-prompt timeout
+  promptTimeoutMs: undefined,    // default (no timeout)
   mcpServers: [],                // MCP tool servers
   onPermissionRequest: handler,  // default permission handler
   onEvent: (event) => {},        // lifecycle events
@@ -232,7 +250,7 @@ import {
 |---------|----------|
 | `ENOENT` / binary not found | Install [Gemini CLI](https://ai.google.dev/gemini-cli) or pass `binaryPath` |
 | Auth errors | Run `gemini auth login` |
-| Timeouts | Increase `promptTimeoutMs` or check network |
+| Timeouts | Set or increase `promptTimeoutMs`; check network connectivity |
 | `GeminiSessionBusyError` | Only one `send()`/`updates()` consumer per turn; only one prompt at a time |
 | Hung process | `pkill -f "gemini --acp"` and retry |
 

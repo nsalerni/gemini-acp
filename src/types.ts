@@ -508,7 +508,10 @@ export interface GeminiClientOptions {
    * Default prompt timeout in milliseconds.
    * Can be overridden per-session via {@link GeminiSessionOptions.promptTimeoutMs}.
    *
-   * @defaultValue `300_000` (5 minutes)
+   * When `undefined` (the default), prompts run indefinitely until the
+   * agent finishes or the caller invokes {@link GeminiSession.cancel}.
+   *
+   * @defaultValue `undefined` (no timeout)
    */
   promptTimeoutMs?: number;
 
@@ -584,6 +587,8 @@ export interface GeminiSessionOptions {
   /**
    * Prompt timeout in milliseconds for this session.
    * Overrides the client-level {@link GeminiClientOptions.promptTimeoutMs}.
+   *
+   * When `undefined`, inherits the client default (no timeout unless configured).
    */
   promptTimeoutMs?: number;
 }

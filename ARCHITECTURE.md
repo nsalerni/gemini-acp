@@ -275,7 +275,7 @@ All errors include:
 ## Timeouts
 
 - **Request Timeout** (default 60s): Individual ACP method calls
-- **Prompt Timeout** (default 300s): Time allowed for a full prompt round-trip
+- **Prompt Timeout** (default: none): Optional per-prompt timeout, configurable via `promptTimeoutMs`
 - **Process Timeout**: Graceful shutdown waits for process exit (no timeout)
 
 Timeout behavior: Request is rejected with `GeminiTimeoutError`, but the process remains alive.

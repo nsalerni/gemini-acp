@@ -101,13 +101,6 @@ export const ACP_METHOD_SESSION_REQUEST_PERMISSION = "session/request_permission
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
-/**
- * Default timeout (in milliseconds) for prompt requests, which are expected
- * to take longer than ordinary RPC calls.
- *
- * @default 300_000 (5 minutes)
- */
-export const DEFAULT_PROMPT_TIMEOUT_MS = 300_000;
 
 /**
  * Maximum time (in milliseconds) to wait for the first piece of output

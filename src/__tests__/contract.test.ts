@@ -392,4 +392,44 @@ describe("ACP contract tests", () => {
     // The fake server doesn't support --version, so it may time out or not parse
     expect(result.binaryPath).toBe(FAKE_SERVER_PATH);
   }, 30_000);
+
+  it("prompts have no timeout by default", async () => {
+    client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
+    const session = await client.openSession({ mode: "yolo" });
+
+    // The fake server responds instantly, so this just verifies
+    // that prompts succeed without any timeout being set
+    const result = await collectTurn(session.send("Hi"));
+    expect(result.text).toBe("Hello world");
+
+    await session.close();
+  }, 30_000);
+
+  it("respects promptTimeoutMs set at client level", async () => {
+    // Set a generous timeout — the fake server responds instantly
+    // so this verifies the option is accepted and plumbed through
+    client = await createGeminiClient({
+      binaryPath: FAKE_SERVER_PATH,
+      promptTimeoutMs: 10_000,
+    });
+    const session = await client.openSession({ mode: "yolo" });
+
+    const result = await collectTurn(session.send("Hi"));
+    expect(result.text).toBe("Hello world");
+
+    await session.close();
+  }, 30_000);
+
+  it("respects promptTimeoutMs set at session level", async () => {
+    client = await createGeminiClient({ binaryPath: FAKE_SERVER_PATH });
+    const session = await client.openSession({
+      mode: "yolo",
+      promptTimeoutMs: 10_000,
+    });
+
+    const result = await collectTurn(session.send("Hi"));
+    expect(result.text).toBe("Hello world");
+
+    await session.close();
+  }, 30_000);
 });

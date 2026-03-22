@@ -12,7 +12,6 @@ import {
 import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
 import { GeminiSessionImpl } from "./GeminiSessionImpl.js";
 import { GeminiProcessError } from "./errors.js";
-import { DEFAULT_PROMPT_TIMEOUT_MS } from "./constants.js";
 import { trimToUndefined } from "./utils.js";
 
 /**
@@ -54,7 +53,7 @@ export class GeminiClientImpl implements GeminiClient {
   private onEvent?: (event: GeminiClientEvent) => void;
   private defaultOnPermissionRequest?: PermissionHandler;
   private defaultMcpServers: readonly GeminiMcpServer[];
-  private defaultPromptTimeoutMs: number;
+  private defaultPromptTimeoutMs: number | undefined;
   private warmStart: boolean;
   private warmStartTimeoutMs: number;
 
@@ -68,7 +67,7 @@ export class GeminiClientImpl implements GeminiClient {
     this.onEvent = options.onEvent;
     this.defaultOnPermissionRequest = options.onPermissionRequest;
     this.defaultMcpServers = options.mcpServers ?? [];
-    this.defaultPromptTimeoutMs = options.promptTimeoutMs ?? DEFAULT_PROMPT_TIMEOUT_MS;
+    this.defaultPromptTimeoutMs = options.promptTimeoutMs;
     this.warmStart = options.warmStart ?? false;
     this.warmStartTimeoutMs = options.warmStartTimeoutMs ?? 30_000;
   }
