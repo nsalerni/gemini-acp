@@ -5,22 +5,39 @@
 import { execFile } from "node:child_process";
 
 export interface PreflightResult {
+  /** `true` when the CLI is found **and** supports ACP. */
   readonly ok: boolean;
+  /** Resolved path (or name) of the Gemini CLI binary that was checked. */
   readonly binaryPath: string;
+  /** Whether the binary was found on the system. */
   readonly binaryFound: boolean;
+  /** Semver-ish version string parsed from `gemini --version`, if available. */
   readonly version?: string;
+  /** Whether the detected version meets the minimum ACP requirement (≥ 0.30). */
   readonly acpSupported: boolean;
+  /** Human-readable messages describing any problems that were detected. */
   readonly diagnostics: string[];
 }
 
 export interface PreflightOptions {
+  /**
+   * Path or command name of the Gemini CLI binary.
+   * @defaultValue `"gemini"`
+   */
   binaryPath?: string;
+  /**
+   * Maximum time in milliseconds to wait for the CLI to respond.
+   * @defaultValue `10_000`
+   */
   timeoutMs?: number;
 }
 
 /**
  * Check if the Gemini CLI is installed, accessible, and supports ACP.
  * Use this to provide actionable error messages before creating a client.
+ *
+ * @param options - Optional overrides for the binary path and timeout.
+ * @returns A {@link PreflightResult} summarising CLI availability and ACP support.
  *
  * @example
  * ```ts
@@ -89,15 +106,22 @@ export async function preflightGemini(options?: PreflightOptions): Promise<Prefl
   };
 }
 
+/**
+ * Run a command and return its stdout, rejecting if it exceeds the timeout.
+ *
+ * @internal
+ * @param command - Binary to execute.
+ * @param args - Arguments passed to the binary.
+ * @param timeoutMs - Maximum execution time in milliseconds.
+ */
 function execWithTimeout(command: string, args: string[], timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = execFile(command, args, { timeout: timeoutMs }, (error, stdout) => {
+    execFile(command, args, { timeout: timeoutMs }, (error, stdout) => {
       if (error) {
         reject(error);
       } else {
         resolve(stdout);
       }
     });
-    child.unref?.();
   });
 }

@@ -10,10 +10,30 @@ import {
 import { GeminiAcpBroker } from "./GeminiAcpBroker.js";
 import { GeminiSessionClosedError, GeminiSessionBusyError } from "./errors.js";
 
+/**
+ * Normalize prompt input into an array of content blocks.
+ *
+ * Converts a plain string into a single `text` content block, or returns
+ * the input array unchanged.
+ *
+ * @internal
+ */
 function normalizePromptInput(input: GeminiPromptInput): readonly GeminiContentBlock[] {
   return typeof input === "string" ? [{ type: "text", text: input }] : input;
 }
 
+/**
+ * Concrete implementation of {@link GeminiSession}.
+ *
+ * Manages a single multiplexed session on top of a {@link GeminiAcpBroker},
+ * providing prompt submission, streaming update iteration, mode/model
+ * switching, and session lifecycle control.
+ *
+ * Instances are created via the static {@link GeminiSessionImpl.create} factory
+ * and should not be constructed directly.
+ *
+ * @internal
+ */
 export class GeminiSessionImpl implements GeminiSession {
   readonly id: string;
 
@@ -43,6 +63,16 @@ export class GeminiSessionImpl implements GeminiSession {
     this.#currentModel = currentModel;
   }
 
+  /**
+   * Create a new {@link GeminiSessionImpl} instance.
+   *
+   * @param sessionId - Unique session identifier assigned by the Gemini CLI.
+   * @param broker - The broker that owns the underlying CLI process.
+   * @param currentModel - The initially selected model ID, if known.
+   * @param logger - Optional logger for debug/error output.
+   * @param options - Optional configuration for timeouts, event callbacks, and disposal hooks.
+   * @returns A fully initialised session instance.
+   */
   static create(
     sessionId: string,
     broker: GeminiAcpBroker,
@@ -61,19 +91,46 @@ export class GeminiSessionImpl implements GeminiSession {
     return session;
   }
 
+  /** The currently selected model ID, or `undefined` if not yet determined. */
   get currentModel(): string | undefined {
     return this.#currentModel;
   }
 
-  /** @internal */
+  /**
+   * Set the current model ID without sending a request to the broker.
+   *
+   * Used by the client to reflect model changes originating from the CLI side.
+   *
+   * @internal
+   */
   setCurrentModel(model: string | undefined): void {
     this.#currentModel = model;
   }
 
+  /**
+   * Send a prompt and wait for the turn to complete.
+   *
+   * @param input - The prompt text or content blocks to send.
+   * @returns The prompt response including the stop reason.
+   * @throws {GeminiSessionClosedError} If the session has been closed.
+   * @throws {GeminiSessionBusyError} If another prompt is already in progress.
+   * @throws {GeminiTimeoutError} If the prompt exceeds the configured timeout.
+   */
   async prompt(input: GeminiPromptInput): Promise<GeminiAcpPromptResponse> {
     return await this.#startPrompt(normalizePromptInput(input));
   }
 
+  /**
+   * Send a prompt and return an async iterable of session updates.
+   *
+   * This is the recommended high-level API — it submits the prompt and
+   * yields all updates for the turn in a single call.
+   *
+   * @param input - The prompt text or content blocks to send.
+   * @returns An async iterable yielding session updates until the turn completes.
+   * @throws {GeminiSessionClosedError} If the session has been closed.
+   * @throws {GeminiSessionBusyError} If another prompt is already in progress.
+   */
   send(input: GeminiPromptInput): AsyncIterable<GeminiSessionUpdate> {
     const completion = this.#startPrompt(normalizePromptInput(input)).then(
       () => ({ ok: true as const }),
@@ -85,6 +142,7 @@ export class GeminiSessionImpl implements GeminiSession {
     return this.#sendUpdates(completion);
   }
 
+  /** Yield updates from {@link updates} and then propagate any prompt error. */
   async *#sendUpdates(
     completion: Promise<{ ok: true } | { ok: false; error: Error }>,
   ): AsyncIterable<GeminiSessionUpdate> {
@@ -97,6 +155,7 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
+  /** Submit a prompt to the broker, managing turn lifecycle flags and events. */
   #startPrompt(blocks: readonly GeminiContentBlock[]): Promise<GeminiAcpPromptResponse> {
     if (this.#closed) {
       throw new GeminiSessionClosedError("Session is closed");
@@ -134,6 +193,12 @@ export class GeminiSessionImpl implements GeminiSession {
     })();
   }
 
+  /**
+   * Change the session mode.
+   *
+   * @param mode - The new mode: `"yolo"` for auto-execute or `"plan"` for approval-required.
+   * @throws {GeminiSessionClosedError} If the session has been closed.
+   */
   async setMode(mode: "yolo" | "plan"): Promise<void> {
     if (this.#closed) {
       throw new GeminiSessionClosedError("Session is closed");
@@ -142,6 +207,12 @@ export class GeminiSessionImpl implements GeminiSession {
     await this.#broker.setMode(this.id, mode);
   }
 
+  /**
+   * Switch to a different model.
+   *
+   * @param modelId - The model identifier to switch to.
+   * @throws {GeminiSessionClosedError} If the session has been closed.
+   */
   async setModel(modelId: string): Promise<void> {
     if (this.#closed) {
       throw new GeminiSessionClosedError("Session is closed");
@@ -151,6 +222,11 @@ export class GeminiSessionImpl implements GeminiSession {
     this.#currentModel = modelId;
   }
 
+  /**
+   * Cancel the currently running prompt.
+   *
+   * This is a no-op if no prompt is in progress or the session is closed.
+   */
   cancel(): Promise<void> {
     if (this.#closed) {
       return Promise.resolve();
@@ -161,6 +237,16 @@ export class GeminiSessionImpl implements GeminiSession {
     return Promise.resolve();
   }
 
+  /**
+   * Get an async iterable of updates for the current turn.
+   *
+   * Yields any buffered updates first, then awaits future updates until
+   * the turn completes or the session closes. Only one consumer may
+   * iterate updates at a time per turn.
+   *
+   * @returns An async iterable yielding session updates until the turn completes.
+   * @throws {GeminiSessionBusyError} If another consumer is already iterating updates.
+   */
   async *updates(): AsyncIterable<GeminiSessionUpdate> {
     if (this.#consuming) {
       throw new GeminiSessionBusyError(
@@ -179,15 +265,25 @@ export class GeminiSessionImpl implements GeminiSession {
 
       // Then yield future updates until turn completes or session closes
       while (!this.#closed && !this.#turnComplete) {
-        const update = await new Promise<GeminiSessionUpdate | null>((resolve) => {
-          this.#updateResolvers.push(resolve);
-        });
-
-        if (update === null) {
-          break;
+        let resolver: ((update: GeminiSessionUpdate | null) => void) | undefined;
+        try {
+          const update = await new Promise<GeminiSessionUpdate | null>((resolve) => {
+            resolver = resolve;
+            this.#updateResolvers.push(resolve);
+          });
+          resolver = undefined; // Resolved, no cleanup needed
+          if (update === null) break;
+          yield update;
+        } finally {
+          // If the consumer abandoned iteration while we were waiting,
+          // remove the unresolved resolver to prevent stale references.
+          if (resolver) {
+            const idx = this.#updateResolvers.indexOf(resolver);
+            if (idx !== -1) {
+              this.#updateResolvers.splice(idx, 1);
+            }
+          }
         }
-
-        yield update;
       }
 
       // Drain any remaining buffered updates
@@ -204,6 +300,13 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
+  /**
+   * Close the session.
+   *
+   * Releases the session route from the broker and resolves all pending
+   * update waiters. The remote session remains resumable via
+   * `GeminiClient.openSession` with `resumeSessionId`.
+   */
   async close(): Promise<void> {
     if (this.#closed) {
       return;
@@ -216,6 +319,7 @@ export class GeminiSessionImpl implements GeminiSession {
     this.#onDispose?.(this.id);
   }
 
+  /** Resolve all pending update waiters with `null` and reset the resolver queue. */
   #notifyAllResolvers() {
     for (let i = this.#resolversHead; i < this.#updateResolvers.length; i++) {
       this.#updateResolvers[i](null);
@@ -224,6 +328,7 @@ export class GeminiSessionImpl implements GeminiSession {
     this.#resolversHead = 0;
   }
 
+  /** Safely invoke the user-provided event callback, swallowing errors. */
   #emitEvent(event: GeminiClientEvent): void {
     try {
       this.#onEvent?.(event);
@@ -232,6 +337,7 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
+  /** Compact the updates queue by removing already-consumed entries. */
   #compactUpdates() {
     if (this.#updatesHead > 0) {
       this.#updates.splice(0, this.#updatesHead);
@@ -239,7 +345,14 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
-  // Public methods for route handlers
+  /**
+   * Deliver an update from the broker to the session.
+   *
+   * If a consumer is waiting via {@link updates}, the update is handed
+   * directly to its resolver; otherwise it is buffered.
+   *
+   * @internal
+   */
   handleUpdate(update: GeminiSessionUpdate): void {
     if (this.#closed) {
       return;
@@ -258,6 +371,14 @@ export class GeminiSessionImpl implements GeminiSession {
     }
   }
 
+  /**
+   * Handle unexpected broker closure.
+   *
+   * Records the error, marks the session as closed, and resolves all
+   * pending update waiters so consumers unblock.
+   *
+   * @internal
+   */
   handleBrokerClose(closeInput: { error?: Error; stderr: string }): void {
     this.#error = closeInput.error ?? new Error(closeInput.stderr.trim() || "Broker closed");
     this.#closed = true;

@@ -14,8 +14,43 @@ const GEMINI_HOME_MIRROR_FILES = [
 ] as const;
 
 /**
- * Create an isolated Gemini home directory
- * This is useful for running Gemini in a sandbox without interfering with user's main config
+ * Create an isolated Gemini CLI home directory by mirroring essential
+ * authentication and configuration files from the user's real `~/.gemini`
+ * directory into a sandboxed location.
+ *
+ * This allows Gemini CLI to run in an isolated environment without modifying
+ * the user's primary configuration. The following files are copied (when they
+ * exist) from `~/.gemini` into `<stateDir>/.gemini`:
+ *
+ * - `oauth_creds.json` — OAuth credentials
+ * - `google_account_id` — active Google account identifier
+ * - `google_accounts.json` — stored Google accounts
+ * - `installation_id` — unique installation identifier
+ * - `trustedFolders.json` — list of trusted workspace folders
+ * - `mcp-oauth-tokens.json` — MCP OAuth tokens
+ * - `settings.json.orig` — original settings backup
+ *
+ * Additionally, `settings.json` is copied and patched so that
+ * `context.fileName` points to a Gemini ACP–specific context file.
+ *
+ * The returned `env` object includes `GEMINI_CLI_HOME` set to `stateDir` and
+ * `GEMINI_SYSTEM_MD` set to `"false"`, and should be passed as the
+ * environment when spawning Gemini CLI processes.
+ *
+ * @param input - Configuration object.
+ * @param input.stateDir - Absolute path to the directory that will serve as the
+ *   isolated Gemini home root. A `.gemini` subdirectory is created inside it.
+ * @returns A promise that resolves to an object containing `env`, a
+ *   `NodeJS.ProcessEnv` suitable for spawning Gemini CLI in the isolated home.
+ *
+ * @example
+ * ```ts
+ * const { env } = await createIsolatedGeminiHome({
+ *   stateDir: "/tmp/my-app-gemini-home",
+ * });
+ * // Use `env` when spawning Gemini CLI processes:
+ * spawn("gemini", ["..."], { env });
+ * ```
  */
 export async function createIsolatedGeminiHome(input: {
   stateDir: string;

@@ -4,6 +4,8 @@ import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   MAX_STDERR_CHARS,
   ACP_METHOD_INITIALIZE,
+  ACP_METHOD_SESSION_REQUEST_PERMISSION,
+  ACP_METHOD_SESSION_UPDATE,
   ACP_PROTOCOL_VERSION,
 } from "./constants.js";
 import {
@@ -19,12 +21,25 @@ import {
 import { GeminiProcessError, GeminiProtocolError, GeminiRequestError, GeminiTimeoutError } from "./errors.js";
 import { toMessage } from "./utils.js";
 
+/**
+ * Tracks an in-flight JSON-RPC request together with its settlement
+ * callbacks and optional timeout handle.
+ *
+ * @internal
+ */
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
   readonly timeout?: ReturnType<typeof setTimeout> | undefined;
 }
 
+/**
+ * Callback handlers supplied by the caller when constructing a
+ * {@link JsonRpcStdioClient}.  These are invoked in response to
+ * protocol-level events received from the child process.
+ *
+ * @internal
+ */
 interface ClientHandlers {
   readonly onSessionUpdate: (envelope: GeminiAcpNotificationEnvelope) => void;
   readonly onPermissionRequest: (request: GeminiAcpPermissionRequest) => Promise<unknown>;
@@ -37,6 +52,16 @@ interface ClientHandlers {
   readonly onProtocolError?: ((error: Error) => void) | undefined;
 }
 
+/**
+ * A JSON-RPC 2.0 client that communicates with a Gemini CLI child process
+ * over `stdin`/`stdout` using newline-delimited JSON.
+ *
+ * Instances are created exclusively through the {@link JsonRpcStdioClient.start}
+ * factory which spawns the child process, performs the ACP `initialize`
+ * handshake, and returns a ready-to-use client.
+ *
+ * @internal
+ */
 export class JsonRpcStdioClient {
   readonly child: ChildProcessWithoutNullStreams;
   readonly output: readline.Interface;
@@ -52,6 +77,7 @@ export class JsonRpcStdioClient {
   private handlers: ClientHandlers;
   private logger?: GeminiLogger;
 
+  /** Constructs a new client wrapping the given child process. */
   private constructor(
     child: ChildProcessWithoutNullStreams,
     cwd: string,
@@ -72,6 +98,15 @@ export class JsonRpcStdioClient {
     this.attachListeners();
   }
 
+  /**
+   * Spawns a Gemini CLI child process, performs the ACP `initialize`
+   * handshake, and returns a fully initialised client.
+   *
+   * @param input - Spawn configuration and event-handler callbacks.
+   * @returns A connected {@link JsonRpcStdioClient} ready to send requests.
+   * @throws {GeminiProcessError} If the child process fails to start or the
+   *   `initialize` handshake does not complete successfully.
+   */
   static async start(input: {
     readonly binaryPath: string;
     readonly cwd: string;
@@ -139,18 +174,34 @@ export class JsonRpcStdioClient {
     }
   }
 
+  /** Accumulated stderr output from the child process. */
   get stderr(): string {
     return this.#stderr;
   }
 
+  /** A promise that resolves once the child process has exited. */
   get closed(): Promise<void> {
     return this.#closedPromise;
   }
 
+  /** Whether the child process has already exited. */
   get isClosed(): boolean {
     return this.#closed;
   }
 
+  /**
+   * Sends a JSON-RPC request and waits for the corresponding response.
+   *
+   * @param method - The JSON-RPC method name.
+   * @param params - Parameters to include in the request.
+   * @param timeoutMs - Optional timeout in milliseconds after which a
+   *   {@link GeminiTimeoutError} is thrown.
+   * @returns The `result` field of the JSON-RPC response.
+   * @throws {GeminiProcessError} If the client is already closed or the
+   *   message cannot be written to stdin.
+   * @throws {GeminiTimeoutError} If the request exceeds `timeoutMs`.
+   * @throws {GeminiRequestError} If the server responds with a JSON-RPC error.
+   */
   async request<TResponse>(
     method: string,
     params: unknown,
@@ -198,6 +249,13 @@ export class JsonRpcStdioClient {
     });
   }
 
+  /**
+   * Sends a JSON-RPC notification (a message with no `id` that expects no
+   * response).
+   *
+   * @param method - The JSON-RPC method name.
+   * @param params - Parameters to include in the notification.
+   */
   notify(method: string, params: unknown): void {
     if (this.#closed) {
       this.logger?.warn?.("Cannot send notification; client is closed");
@@ -212,11 +270,13 @@ export class JsonRpcStdioClient {
     this.writeMessage(message);
   }
 
+  /** Enables or disables delivery of session-update notifications. */
   setNotificationsEnabled(enabled: boolean) {
     this.#notificationsEnabled = enabled;
     this.logger?.debug?.(`Notifications ${enabled ? "enabled" : "disabled"}`);
   }
 
+  /** Gracefully stops the child process (SIGTERM with a SIGKILL fallback). */
   async stop(): Promise<void> {
     if (this.#closed) {
       await this.#closedPromise;
@@ -238,9 +298,15 @@ export class JsonRpcStdioClient {
     this.logger?.info?.("Gemini ACP client stopped");
   }
 
+  /** Wires up stdout, stderr, error, and close listeners on the child process. */
   private attachListeners() {
     this.output.on("line", (line) => {
-      void this.handleLine(line);
+      void this.handleLine(line).catch((error) => {
+        this.logger?.error?.(
+          "Unhandled error processing line",
+          error instanceof Error ? error.message : String(error),
+        );
+      });
     });
 
     this.child.stderr.on("data", (chunk: Buffer | string) => {
@@ -267,6 +333,7 @@ export class JsonRpcStdioClient {
     });
   }
 
+  /** Parses a single line of stdout as a JSON-RPC message and dispatches it. */
   private async handleLine(line: string) {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -353,16 +420,18 @@ export class JsonRpcStdioClient {
     }
   }
 
+  /** Handles an incoming JSON-RPC request from the child process. */
   private async handleRequest(method: string, params: unknown): Promise<unknown> {
-    if (method === "session/request_permission") {
+    if (method === ACP_METHOD_SESSION_REQUEST_PERMISSION) {
       this.logger?.debug?.("Permission request received");
       return await this.handlers.onPermissionRequest((params ?? {}) as GeminiAcpPermissionRequest);
     }
     throw new GeminiProtocolError(`Unsupported Gemini ACP client request: ${method}`);
   }
 
+  /** Handles an incoming JSON-RPC notification from the child process. */
   private handleNotification(method: string, params: unknown): void {
-    if (method !== "session/update" || !this.#notificationsEnabled) {
+    if (method !== ACP_METHOD_SESSION_UPDATE || !this.#notificationsEnabled) {
       return;
     }
     const envelope = (params ?? {}) as GeminiAcpNotificationEnvelope;
@@ -375,6 +444,7 @@ export class JsonRpcStdioClient {
     this.handlers.onSessionUpdate(envelope);
   }
 
+  /** Serialises and writes a JSON-RPC message to the child process stdin. */
   private writeMessage(message: JsonRpcMessage): void {
     if (this.#closed || !this.child.stdin.writable) {
       throw new GeminiProcessError("Cannot write to Gemini ACP stdin.");
@@ -382,6 +452,7 @@ export class JsonRpcStdioClient {
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
+  /** Cleans up state and rejects pending requests when the child process exits. */
   private handleClose(input: {
     readonly code: number | null;
     readonly signal: NodeJS.Signals | null;

@@ -15,13 +15,29 @@ import { GeminiProcessError } from "./errors.js";
 import { DEFAULT_PROMPT_TIMEOUT_MS } from "./constants.js";
 import { trimToUndefined } from "./utils.js";
 
+/**
+ * Holds the metadata for a pre-opened "warm" session that can be
+ * handed to the next {@link GeminiClientImpl.openSession} call to
+ * skip the session-creation latency.
+ *
+ * @internal
+ */
 interface GeminiWarmSession {
-  readonly broker: GeminiAcpBroker;
   readonly sessionId: string;
   readonly cwd: string;
   readonly binaryPath: string;
 }
 
+/**
+ * Concrete implementation of the {@link GeminiClient} interface.
+ *
+ * Manages the lifecycle of a single Gemini CLI broker process and
+ * multiplexes sessions over it.  Use the factory function
+ * {@link createGeminiClient} (or the static {@link create} method)
+ * to obtain an instance.
+ *
+ * @internal
+ */
 export class GeminiClientImpl implements GeminiClient {
   #broker: GeminiAcpBroker | undefined;
   #brokerPending: Promise<GeminiAcpBroker> | undefined;
@@ -42,6 +58,7 @@ export class GeminiClientImpl implements GeminiClient {
   private warmStart: boolean;
   private warmStartTimeoutMs: number;
 
+  /** Initialise instance fields from the provided options. */
   private constructor(options: GeminiClientOptions) {
     this.binaryPath = options.binaryPath ?? "gemini";
     this.cwd = options.cwd ?? process.cwd();
@@ -56,6 +73,14 @@ export class GeminiClientImpl implements GeminiClient {
     this.warmStartTimeoutMs = options.warmStartTimeoutMs ?? 30_000;
   }
 
+  /**
+   * Create a new client, start the broker, and optionally warm-start
+   * a session in the background.
+   *
+   * @param options - Client configuration. All fields are optional.
+   * @returns A fully-initialised client with its broker running.
+   * @throws {GeminiProcessError} If the broker fails to start.
+   */
   static async create(options?: GeminiClientOptions): Promise<GeminiClientImpl> {
     const client = new GeminiClientImpl(options ?? {});
     await client.ensureBroker();
@@ -70,6 +95,17 @@ export class GeminiClientImpl implements GeminiClient {
     return client;
   }
 
+  /**
+   * Open a new session (or resume an existing one).
+   *
+   * If a warm session is available and compatible, it is consumed
+   * instead of creating a new one, and a replacement warm session
+   * is started in the background.
+   *
+   * @param options - Session configuration. All fields are optional.
+   * @returns The opened (or resumed) session.
+   * @throws {GeminiProcessError} If the client is closed or the broker cannot start.
+   */
   async openSession(options?: GeminiSessionOptions): Promise<GeminiSession> {
     if (this.#closed) {
       throw new GeminiProcessError("Client is closed");
@@ -105,11 +141,27 @@ export class GeminiClientImpl implements GeminiClient {
     }
   }
 
+  /**
+   * Send a raw ACP JSON-RPC request to the broker.
+   *
+   * @typeParam T - The expected response type (not runtime-validated).
+   * @param method - The ACP method name (e.g. `"session/some_new_method"`).
+   * @param params - The method parameters.
+   * @param timeoutMs - Optional request timeout in milliseconds.
+   * @returns The parsed response.
+   * @throws {GeminiProcessError} If the client is closed.
+   * @throws {GeminiTimeoutError} If the request times out.
+   * @throws {GeminiRequestError} If the ACP method returns an error.
+   */
   async rawRequest<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T> {
+    if (this.#closed) {
+      throw new GeminiProcessError("Client is closed");
+    }
     const broker = await this.ensureBroker();
     return await broker.rawRequest<T>(method, params, timeoutMs);
   }
 
+  /** Dispatch a client event, swallowing any handler errors. */
   private emit(event: GeminiClientEvent): void {
     try {
       this.onEvent?.(event);
@@ -118,6 +170,7 @@ export class GeminiClientImpl implements GeminiClient {
     }
   }
 
+  /** Build a permission callback that emits events around the resolved handler. */
   private resolvePermissionHandler(sessionId: string, sessionHandler?: PermissionHandler): (request: GeminiAcpPermissionRequest) => Promise<unknown> {
     const handler = sessionHandler ?? this.defaultOnPermissionRequest;
     return async (request) => {
@@ -126,12 +179,13 @@ export class GeminiClientImpl implements GeminiClient {
         this.emit({ type: "permission_resolved", sessionId, outcome: "cancelled" });
         return { outcome: { outcome: "cancelled" } };
       }
-      const result = await handler(request) as { outcome: { outcome: string } };
+      const result = await handler(request);
       this.emit({ type: "permission_resolved", sessionId, outcome: result.outcome.outcome });
       return result;
     };
   }
 
+  /** Open a brand-new session via the broker and register it. */
   private async openNewSession(
     broker: GeminiAcpBroker,
     options: GeminiSessionOptions,
@@ -186,6 +240,7 @@ export class GeminiClientImpl implements GeminiClient {
     }
   }
 
+  /** Consume a pre-opened warm session, rebind it, and apply options. */
   private async takeWarmSession(
     warm: GeminiWarmSession,
     broker: GeminiAcpBroker,
@@ -239,11 +294,15 @@ export class GeminiClientImpl implements GeminiClient {
       this.logger?.warn?.("Failed to restart warm session", error instanceof Error ? error.message : String(error));
     });
 
-    this.emit({ type: "session_opened", sessionId, model: options.model, warm: true });
-    this.logger?.info?.("Session opened", { sessionId, model: options.model, fromWarm: true });
+    this.emit({ type: "session_opened", sessionId, model: session.currentModel, warm: true });
+    this.logger?.info?.("Session opened", { sessionId, model: session.currentModel, fromWarm: true });
     return session;
   }
 
+  /**
+   * Gracefully shut down the client: cancel warm sessions, close all
+   * active sessions, and stop the broker process.
+   */
   async close(): Promise<void> {
     if (this.#closed) {
       return;
@@ -301,7 +360,12 @@ export class GeminiClientImpl implements GeminiClient {
     return this.#closed;
   }
 
+  /** Return the running broker, starting one if necessary. */
   private async ensureBroker(): Promise<GeminiAcpBroker> {
+    if (this.#closed) {
+      throw new GeminiProcessError("Client is closed");
+    }
+
     if (this.#broker && !this.#broker.isClosed) {
       return this.#broker;
     }
@@ -341,6 +405,7 @@ export class GeminiClientImpl implements GeminiClient {
     return pending;
   }
 
+  /** Pre-open a background session to reduce latency for the next `openSession` call. */
   private async startWarmSession(): Promise<void> {
     // Avoid multiple warm starts
     if (this.#warmSessionPending) {
@@ -406,7 +471,6 @@ export class GeminiClientImpl implements GeminiClient {
         }
 
         this.#warmSession = {
-          broker,
           sessionId,
           cwd: this.cwd,
           binaryPath: this.binaryPath,
@@ -442,7 +506,18 @@ export class GeminiClientImpl implements GeminiClient {
 }
 
 /**
- * Create a new Gemini ACP client
+ * Create a new Gemini ACP client, starting the Gemini CLI broker
+ * process in the background.
+ *
+ * @param options - Client configuration. All fields are optional.
+ * @returns A ready-to-use {@link GeminiClient}.
+ * @throws {GeminiProcessError} If the broker process fails to start.
+ *
+ * @example
+ * ```ts
+ * const client = await createGeminiClient({ cwd: "/my/project" });
+ * const session = await client.openSession();
+ * ```
  */
 export async function createGeminiClient(
   options?: GeminiClientOptions

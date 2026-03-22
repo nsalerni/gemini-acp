@@ -5,12 +5,20 @@ import {
 } from "../types.js";
 
 /**
- * Summary of a tool call made during a turn.
+ * Summary of a single tool call made during an agent turn.
+ *
+ * Each summary captures the identifying information and the latest state of a
+ * tool invocation. When a `tool_call_update` is received, the corresponding
+ * summary is merged so that this always reflects the most recent values.
  */
 export interface GeminiToolCallSummary {
+  /** Unique identifier for this tool call within the turn. */
   readonly toolCallId: string;
+  /** Human-readable title describing the tool action. */
   readonly title: string;
+  /** The category/kind of tool that was invoked (e.g. `"shell"`, `"file_edit"`), if available. */
   readonly kind?: GeminiAcpToolKind | null;
+  /** The execution status of the tool call (e.g. `"running"`, `"completed"`), if available. */
   readonly status?: GeminiAcpToolStatus | null;
 }
 
@@ -29,14 +37,28 @@ export interface GeminiTurnResult {
 }
 
 /**
- * Collect all updates from a turn into a structured result.
- * Use this when you want the final output without manually iterating updates.
+ * Collect all streaming updates from an agent turn into a single structured result.
+ *
+ * This is a convenience wrapper around the `AsyncIterable<GeminiSessionUpdate>`
+ * returned by {@link GeminiSession.send}. It consumes the entire iterable,
+ * concatenates message text chunks, tracks tool call state, and captures any
+ * plan entries so you don't have to manually iterate and aggregate updates.
+ *
+ * @param updates - The async iterable of session updates produced by
+ *   {@link GeminiSession.send} or any other source of {@link GeminiSessionUpdate}.
+ * @returns A promise that resolves to a {@link GeminiTurnResult} containing the
+ *   concatenated agent text, tool call summaries, plan entries, and the raw
+ *   list of all updates received during the turn.
  *
  * @example
  * ```ts
+ * const session = await client.createSession({ workingDir: "/my/project" });
  * const result = await collectTurn(session.send("Explain this code"));
  * console.log(result.text);
  * console.log(`${result.toolCalls.length} tools used`);
+ * for (const tool of result.toolCalls) {
+ *   console.log(`  [${tool.status}] ${tool.title}`);
+ * }
  * ```
  */
 export async function collectTurn(
