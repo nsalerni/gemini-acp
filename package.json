@@ -31,12 +31,13 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && npm run copy-files",
-    "copy-files": "echo 'Build complete'",
+    "build": "tsc",
+    "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --max-warnings 0",
     "test": "vitest",
     "test:run": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm run test:run",
     "dev": "npm run typecheck && npm run test",
     "example:01": "tsx examples/01-basic.ts",
     "example:02": "tsx examples/02-with-image.ts",
@@ -46,7 +47,7 @@
     "bench": "vitest bench",
     "bench:run": "vitest bench --run",
     "bench:warm-start": "tsx examples/bench-warm-start.ts",
-    "prepublishOnly": "npm run typecheck && npm run build"
+    "prepublishOnly": "npm run clean && npm run build && npm run test:run"
   },
   "keywords": [
     "gemini",

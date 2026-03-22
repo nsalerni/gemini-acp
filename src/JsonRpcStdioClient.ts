@@ -7,6 +7,7 @@ import {
   ACP_METHOD_SESSION_REQUEST_PERMISSION,
   ACP_METHOD_SESSION_UPDATE,
   ACP_PROTOCOL_VERSION,
+  LIB_VERSION,
 } from "./constants.js";
 import {
   type JsonRpcMessage,
@@ -152,7 +153,7 @@ export class JsonRpcStdioClient {
           clientInfo: {
             name: "gemini-acp",
             title: "gemini-acp",
-            version: "0.1.0",
+            version: LIB_VERSION,
           },
           clientCapabilities: {},
         },

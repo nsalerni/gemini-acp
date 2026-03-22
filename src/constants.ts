@@ -15,6 +15,13 @@
  */
 export const ACP_PROTOCOL_VERSION = 1;
 
+/**
+ * The version of the gemini-acp library, sent during ACP initialization.
+ *
+ * Keep in sync with the `version` field in package.json.
+ */
+export const LIB_VERSION = "0.1.14";
+
 // ---------------------------------------------------------------------------
 // ACP Methods
 // ---------------------------------------------------------------------------

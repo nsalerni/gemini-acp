@@ -107,6 +107,13 @@ Public API and application-level management:
 - `openSession()` - Create/resume a session
 - `close()` - Shutdown everything gracefully
 
+### 5. **Helpers** (`src/helpers/`)
+
+Utility functions for common tasks:
+- `collectTurn()` - Consume an async iterable of session updates and aggregate them into a structured `GeminiTurnResult`
+- `imageFileToContentBlock()` - Read an image file from disk and convert it to a base64-encoded content block
+- `createIsolatedGeminiHome()` - Create a temporary, isolated Gemini home directory for testing
+
 ## Data Flow
 
 ### Sending a Prompt
@@ -210,8 +217,8 @@ This keeps the library lightweight and composable.
 | `GeminiProtocolError` | Invalid JSON-RPC or ACP protocol | Likely unrecoverable |
 | `GeminiRequestError` | ACP method call failed | Check parameters |
 | `GeminiTimeoutError` | Request exceeded timeout | Increase timeout or cancel |
-| `GeminiSessionNotFoundError` | Session doesn't exist | Create new session |
-| `GeminiPermissionError` | Permission denied | Request different permission |
+| `GeminiSessionClosedError` | Session already closed | Reopen or create new session |
+| `GeminiSessionBusyError` | Concurrent prompt or duplicate consumer | Wait for current prompt/consumer |
 
 ### Error Metadata
 
@@ -267,20 +274,18 @@ All errors include:
 
 ## Timeouts
 
-- **Request Timeout** (default 15s): Individual ACP method calls
-- **Initialization Timeout** (default 15s): Handshake with Gemini CLI
+- **Request Timeout** (default 60s): Individual ACP method calls
+- **Prompt Timeout** (default 300s): Time allowed for a full prompt round-trip
 - **Process Timeout**: Graceful shutdown waits for process exit (no timeout)
 
 Timeout behavior: Request is rejected with `GeminiTimeoutError`, but the process remains alive.
 
 ## Future Improvements
 
-1. **Configurable Timeouts**: Per-session or per-request timeout overrides
-2. **Process Pooling**: Multiple Gemini processes for parallel execution
-3. **Session Persistence**: Built-in disk-based session storage
-4. **Streaming Request**: Support for streaming prompts instead of waiting for full array
-5. **Advanced Logging**: Debug logs for every protocol message
-6. **Metrics**: Built-in instrumentation for response times, error rates, etc.
+1. **Process Pooling**: Multiple Gemini processes for parallel execution
+2. **Session Persistence**: Built-in disk-based session storage
+3. **Streaming Request**: Support for streaming prompts instead of waiting for full array
+4. **Metrics**: Built-in instrumentation for response times, error rates, etc.
 
 ## Testing Strategy
 
@@ -291,10 +296,10 @@ Timeout behavior: Request is rejected with `GeminiTimeoutError`, but the process
 - Pending request cleanup
 - Route registration/unregistration
 
-### Contract Tests (Fake ACP Server)
+### Contract Tests (`src/__tests__/contract.test.ts`)
 - Full session lifecycle
 - Permission request handling
-- Error scenarios
+- Error scenarios (closed session, busy session)
 - Process shutdown
 
 ### Integration Tests (Optional, with Real Gemini CLI)

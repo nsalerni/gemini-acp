@@ -1,34 +1,84 @@
 /**
- * gemini-acp - A Node.js library for communicating with Gemini CLI over ACP protocol
+ * **gemini-acp** — A Node.js library for communicating with the
+ * [Gemini CLI](https://ai.google.dev/gemini-cli) over the ACP
+ * (Agent Control Protocol) via stdio.
+ *
+ * Zero runtime dependencies. Fully typed. Stream agent responses,
+ * handle tool approvals, manage sessions, and connect MCP servers.
+ *
+ * @example
+ * ```ts
+ * import { createGeminiClient } from "@nsalerni/gemini-acp";
+ *
+ * const client = await createGeminiClient();
+ * const session = await client.openSession({ model: "gemini-3.1-flash" });
+ *
+ * for await (const update of session.send("Hello!")) {
+ *   if (update.sessionUpdate === "agent_message_chunk") {
+ *     process.stdout.write(update.content?.text ?? "");
+ *   }
+ * }
+ *
+ * await session.close();
+ * await client.close();
+ * ```
+ *
+ * @packageDocumentation
  */
 
-// Main exports
+// ---------------------------------------------------------------------------
+// Main API
+// ---------------------------------------------------------------------------
+
 export { createGeminiClient } from "./client.js";
 export { preflightGemini } from "./preflight.js";
-export type { PreflightResult, PreflightOptions } from "./preflight.js";
-export type { GeminiClient, GeminiSession } from "./types.js";
 
+// ---------------------------------------------------------------------------
 // Types
+// ---------------------------------------------------------------------------
+
+export type { PreflightResult, PreflightOptions } from "./preflight.js";
+
 export type {
+  // Public API interfaces
+  GeminiClient,
+  GeminiSession,
+
+  // Options
   GeminiClientOptions,
   GeminiSessionOptions,
+
+  // Prompt & content
   GeminiPromptInput,
   GeminiContentBlock,
+
+  // Session updates (streaming)
   GeminiSessionUpdate,
+  GeminiAcpPromptResponse,
+  GeminiAcpPromptStopReason,
+
+  // Permissions
   GeminiAcpPermissionRequest,
   GeminiAcpPermissionOption,
-  GeminiAcpPromptResponse,
-  GeminiMcpServer,
-  GeminiClientEvent,
   PermissionHandler,
-  GeminiLogger,
+
+  // Tools
   GeminiAcpToolKind,
   GeminiAcpToolStatus,
   GeminiAcpToolContent,
-  GeminiAcpPromptStopReason,
+
+  // MCP
+  GeminiMcpServer,
+
+  // Observability
+  GeminiClientEvent,
+  GeminiLogger,
 } from "./types.js";
 
+// ---------------------------------------------------------------------------
 // Errors
+// ---------------------------------------------------------------------------
+
 export {
   GeminiError,
   GeminiProcessError,
@@ -39,7 +89,10 @@ export {
   GeminiSessionBusyError,
 } from "./errors.js";
 
+// ---------------------------------------------------------------------------
 // Constants (exported for advanced use cases)
+// ---------------------------------------------------------------------------
+
 export {
   ACP_PROTOCOL_VERSION,
   ACP_METHOD_INITIALIZE,
