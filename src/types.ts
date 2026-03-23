@@ -459,6 +459,14 @@ export interface GeminiClientOptions {
   binaryPath?: string;
 
   /**
+   * Extra arguments to pass to the Gemini CLI binary.
+   *
+   * These are inserted before the `--acp` flag so that wrapper scripts
+   * can use `--` as a separator if needed.
+   */
+  readonly args?: readonly string[];
+
+  /**
    * Working directory for the Gemini CLI process.
    *
    * @defaultValue `process.cwd()`

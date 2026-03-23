@@ -46,6 +46,7 @@ export class GeminiClientImpl implements GeminiClient {
   #warmTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
   #closed = false;
   private binaryPath: string;
+  private args: readonly string[];
   private cwd: string;
   private env?: NodeJS.ProcessEnv;
   private logger?: GeminiLogger;
@@ -60,6 +61,7 @@ export class GeminiClientImpl implements GeminiClient {
   /** Initialise instance fields from the provided options. */
   private constructor(options: GeminiClientOptions) {
     this.binaryPath = options.binaryPath ?? "gemini";
+    this.args = options.args ?? [];
     this.cwd = options.cwd ?? process.cwd();
     this.env = options.env;
     this.logger = options.logger;
@@ -380,6 +382,7 @@ export class GeminiClientImpl implements GeminiClient {
       try {
         this.#broker = await GeminiAcpBroker.start({
           binaryPath: this.binaryPath,
+          args: this.args,
           cwd: this.cwd,
           ...(this.env ? { env: this.env } : {}),
           ...(this.onProtocolError ? { onProtocolError: this.onProtocolError } : {}),

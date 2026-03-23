@@ -91,6 +91,7 @@ export class GeminiAcpBroker {
    */
   static async start(input: {
     readonly binaryPath: string;
+    readonly args?: readonly string[] | undefined;
     readonly cwd: string;
     readonly env?: NodeJS.ProcessEnv | undefined;
     readonly onProtocolError?: ((error: Error) => void) | undefined;
@@ -100,6 +101,7 @@ export class GeminiAcpBroker {
     let broker: GeminiAcpBroker | undefined;
     const client = await JsonRpcStdioClient.start({
       binaryPath: input.binaryPath,
+      args: input.args,
       cwd: input.cwd,
       ...(input.env ? { env: input.env } : {}),
       onSessionUpdate: (envelope) => broker?.handleSessionUpdate(envelope),

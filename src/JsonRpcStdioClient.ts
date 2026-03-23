@@ -110,6 +110,7 @@ export class JsonRpcStdioClient {
    */
   static async start(input: {
     readonly binaryPath: string;
+    readonly args?: readonly string[] | undefined;
     readonly cwd: string;
     readonly env?: NodeJS.ProcessEnv | undefined;
     readonly onSessionUpdate: (envelope: GeminiAcpNotificationEnvelope) => void;
@@ -123,9 +124,10 @@ export class JsonRpcStdioClient {
     readonly onProtocolError?: ((error: Error) => void) | undefined;
     readonly logger?: GeminiLogger | undefined;
   }) {
-    input.logger?.info?.("Spawning Gemini CLI with ACP protocol...");
+    const spawnArgs = [...(input.args ?? []), "--acp"];
+    input.logger?.info?.("Spawning Gemini CLI with ACP protocol...", { args: spawnArgs });
 
-    const child = spawn(input.binaryPath, ["--acp"], {
+    const child = spawn(input.binaryPath, spawnArgs, {
       cwd: input.cwd,
       ...(input.env ? { env: input.env } : {}),
       shell: process.platform === "win32",
